@@ -1,0 +1,3 @@
+export const trackedSignals = [
+  "Google account ↔ Minecraft UUID ownership", "online/offline sessions", "playtime", "deaths", "kills by mob", "damage dealt/taken", "blocks mined/placed/broken by block type", "items crafted/used/broken/picked/dropped", "diamonds/netherite/rare item finds", "distance walked/sprinted/swum/boated/flown", "advancements", "food eaten", "trades", "raids", "sleep count", "fish caught", "animals bred", "deaths by cause", "dimension visits", "last seen", "server TPS/health", "chat/achievement feed if enabled", "weekly/monthly leaderboards", "fun awards like biggest menace / tunnel goblin / death tax champion"
+];

@@ -1,0 +1,22 @@
+export const players = [
+  { uuid: "5e8db67a-1249-44dc-a053-713bd8a8844a", name: "GMRooster", avatar: "🐓", score: 3075, deaths: 1, distanceKm: 8.28, playHours: 2.41, mobsKilled: 97, blocksMined: 755, diamonds: 20, foodEaten: 0, lastSeen: "tracked" },
+  { uuid: "947b65ff-be0f-4e25-8778-25e53f93e423", name: "Gizmeta", avatar: "⚡", score: 2318, deaths: 0, distanceKm: 9.43, playHours: 2.17, mobsKilled: 35, blocksMined: 1074, diamonds: 2, foodEaten: 0, lastSeen: "tracked" },
+  { uuid: "1fa45424-66b3-4996-aeb7-089d78bc367c", name: "DjoleArmani", avatar: "🧱", score: 870, deaths: 1, distanceKm: 6.26, playHours: 1.16, mobsKilled: 20, blocksMined: 150, diamonds: 0, foodEaten: 0, lastSeen: "tracked" },
+];
+
+export const worldStats = {
+  name: "Gizmo Ivan — Dole",
+  difficulty: "Hard Survival",
+  playersOnline: 1,
+  maxPlayers: 10,
+  trackedPlayers: players.length,
+  uptime: "live",
+  lastSync: "collector not deployed yet",
+};
+
+export const boards = [
+  { title: "Richest Miner", metric: "Diamonds", field: "diamonds", suffix: "💎" },
+  { title: "Tunnel Goblin", metric: "Blocks mined", field: "blocksMined", suffix: "blocks" },
+  { title: "Mob Menace", metric: "Mobs killed", field: "mobsKilled", suffix: "kills" },
+  { title: "Death Tax", metric: "Deaths", field: "deaths", suffix: "deaths", ascending: true },
+] as const;

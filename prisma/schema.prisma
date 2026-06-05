@@ -1,0 +1,87 @@
+generator client { provider = "prisma-client-js" }
+
+datasource db { provider = "mysql" url = env("DATABASE_URL") }
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  image         String?
+  role          UserRole @default(PLAYER)
+  minecraftUuid String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  player        Player?  @relation(fields: [minecraftUuid], references: [uuid])
+}
+
+enum UserRole { PLAYER ADMIN VIEWER }
+
+model Player {
+  uuid          String   @id
+  name          String
+  avatarUrl     String?
+  firstSeenAt   DateTime?
+  lastSeenAt    DateTime?
+  totalPlayMs   BigInt   @default(0)
+  snapshots     PlayerStatSnapshot[]
+  advancements  AdvancementUnlock[]
+  sessions      PlayerSession[]
+  users         User[]
+}
+
+model PlayerStatSnapshot {
+  id          BigInt   @id @default(autoincrement())
+  playerUuid  String
+  capturedAt  DateTime @default(now())
+  deaths      Int      @default(0)
+  mobsKilled  Int      @default(0)
+  blocksMined Int      @default(0)
+  blocksPlaced Int     @default(0)
+  itemsCrafted Int     @default(0)
+  diamondsMined Int    @default(0)
+  distanceCm  BigInt   @default(0)
+  playTicks   BigInt   @default(0)
+  rawStats    Json
+  player      Player   @relation(fields: [playerUuid], references: [uuid])
+  @@index([capturedAt])
+  @@index([playerUuid, capturedAt])
+}
+
+model AdvancementUnlock {
+  id         BigInt   @id @default(autoincrement())
+  playerUuid String
+  key        String
+  unlockedAt DateTime?
+  raw        Json
+  player     Player @relation(fields: [playerUuid], references: [uuid])
+  @@unique([playerUuid, key])
+}
+
+model PlayerSession {
+  id         BigInt   @id @default(autoincrement())
+  playerUuid String
+  joinedAt   DateTime
+  leftAt     DateTime?
+  durationMs BigInt?
+  player     Player @relation(fields: [playerUuid], references: [uuid])
+  @@index([playerUuid, joinedAt])
+}
+
+model WorldEvent {
+  id        BigInt   @id @default(autoincrement())
+  type      String
+  playerUuid String?
+  message   String
+  occurredAt DateTime
+  raw       Json?
+  @@index([type, occurredAt])
+}
+
+model SyncRun {
+  id        BigInt   @id @default(autoincrement())
+  source    String
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+  status    String
+  details   Json?
+}
