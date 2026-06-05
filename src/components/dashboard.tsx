@@ -1,9 +1,10 @@
-import { boards, players, worldStats } from "@/lib/sample-data";
+import { boards as fallbackBoards, players as fallbackPlayers, worldStats as fallbackWorldStats } from "@/lib/sample-data";
 import { trackedSignals } from "@/lib/tracking";
+import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
-export function MinecraftDashboard() {
+export function MinecraftDashboard({ players = fallbackPlayers, worldStats = fallbackWorldStats, boards = fallbackBoards, live = false }: { players?: DashboardPlayer[]; worldStats?: DashboardWorld; boards?: typeof fallbackBoards; live?: boolean }) {
   return (
     <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] px-5 py-6 md:px-10">
       <section className="mx-auto max-w-7xl space-y-6">
@@ -28,7 +29,7 @@ export function MinecraftDashboard() {
 
         <section className="grid gap-5 lg:grid-cols-3">
           <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-            <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-black">Player profiles</h2><span className="rounded-full bg-emerald-400/15 px-3 py-1 text-sm text-emerald-200">Google login ready</span></div>
+            <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-black">Player profiles</h2><span className="rounded-full bg-emerald-400/15 px-3 py-1 text-sm text-emerald-200">{live ? "Live bridge data" : "Sample/fallback data"}</span></div>
             <div className="grid gap-4 md:grid-cols-3">
               {players.map((p, index) => (
                 <article key={p.uuid} className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/12 to-white/5 p-5">

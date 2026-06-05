@@ -1,0 +1,1 @@
+{"name":"minecraft-dashboard-bridge","version":"0.1.0","private":true,"type":"module","scripts":{"start":"node src/server.js","sync":"node src/sync.js"},"dependencies":{"express":"latest","mysql2":"latest"}}
