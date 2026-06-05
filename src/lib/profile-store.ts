@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { knownProfileForEmail, knownPublicProfiles } from "@/lib/known-profiles";
 import { normalizeEmail, usernameFromEmail } from "@/lib/profile-model";
 
 async function uniqueUsername(seed: string, currentUserId?: string) {
@@ -12,11 +13,17 @@ async function uniqueUsername(seed: string, currentUserId?: string) {
 }
 
 export async function findPlayerUuidForEmail(email: string) {
-  const match = await prisma.playerEmail.findUnique({
-    where: { email: normalizeEmail(email) },
-    select: { playerUuid: true },
-  });
-  return match?.playerUuid ?? null;
+  const normalized = normalizeEmail(email);
+  const known = knownProfileForEmail(normalized);
+  try {
+    const match = await prisma.playerEmail.findUnique({
+      where: { email: normalized },
+      select: { playerUuid: true },
+    });
+    return match?.playerUuid ?? known?.minecraftUuid ?? null;
+  } catch {
+    return known?.minecraftUuid ?? null;
+  }
 }
 
 export async function getOrCreateUserProfile(input: { email: string; name?: string | null; image?: string | null; emailVerified?: Date | null }) {
@@ -37,12 +44,12 @@ export async function getOrCreateUserProfile(input: { email: string; name?: stri
     });
   }
 
-  const username = await uniqueUsername(usernameFromEmail(email));
+  const username = await uniqueUsername(knownProfileForEmail(email)?.username ?? usernameFromEmail(email));
   return prisma.user.create({
     data: {
       email,
       username,
-      name: input.name ?? email.split("@")[0],
+      name: input.name ?? knownProfileForEmail(email)?.name ?? email.split("@")[0],
       image: input.image ?? null,
       emailVerified: input.emailVerified ?? null,
       minecraftUuid: linkedPlayerUuid ?? undefined,
@@ -61,9 +68,16 @@ export async function updateUserProfile(userId: string, input: { username?: stri
 }
 
 export async function publicProfiles(limit = 100) {
-  return prisma.user.findMany({
-    take: limit,
-    orderBy: [{ updatedAt: "desc" }],
-    select: { id: true, username: true, name: true, image: true, minecraftUuid: true, player: { select: { uuid: true, name: true, avatarUrl: true, lastSeenAt: true } } },
-  });
+  const known = await knownPublicProfiles();
+  try {
+    const profiles = await prisma.user.findMany({
+      take: limit,
+      orderBy: [{ updatedAt: "desc" }],
+      select: { id: true, username: true, name: true, image: true, minecraftUuid: true, player: { select: { uuid: true, name: true, avatarUrl: true, lastSeenAt: true } } },
+    });
+    const seen = new Set(profiles.flatMap((profile) => [profile.username, profile.minecraftUuid].filter(Boolean)));
+    return [...profiles, ...known.filter((profile) => !seen.has(profile.username) && !seen.has(profile.minecraftUuid))].slice(0, limit);
+  } catch {
+    return known.slice(0, limit);
+  }
 }

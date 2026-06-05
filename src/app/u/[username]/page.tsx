@@ -1,17 +1,19 @@
 import { notFound } from "next/navigation";
 import { GizmoShell } from "@/components/gizmo-shell";
+import { knownPublicProfiles } from "@/lib/known-profiles";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export default async function PublicUserProfile({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
-  const profile = await prisma.user.findUnique({
+  const dbProfile = await prisma.user.findUnique({
     where: { username },
     include: { player: { include: { snapshots: { orderBy: { capturedAt: "desc" }, take: 1 } } } },
   }).catch(() => null);
+  const profile = dbProfile ?? (await knownPublicProfiles()).find((entry) => entry.username === username);
   if (!profile) notFound();
-  const latest = profile.player?.snapshots[0];
+  const latest = latestStatsForPlayer(profile.player);
 
   return (
     <GizmoShell title={`@${profile.username}`} subtitle="Public GizmoCraft profile and Minecraft stat snapshot.">
@@ -31,16 +33,30 @@ export default async function PublicUserProfile({ params }: { params: Promise<{ 
           </div>
           {latest ? (
             <div className="mt-8 grid gap-3 md:grid-cols-4">
-              <Stat label="Deaths" value={latest.deaths} />
-              <Stat label="Mobs" value={latest.mobsKilled} />
-              <Stat label="Mined" value={latest.blocksMined} />
-              <Stat label="Diamonds" value={latest.diamondsMined} />
+              <Stat label="Deaths" value={statValue(latest, "deaths")} />
+              <Stat label="Mobs" value={statValue(latest, "mobsKilled")} />
+              <Stat label="Mined" value={statValue(latest, "blocksMined")} />
+              <Stat label="Diamonds" value={statValue(latest, "diamondsMined", "diamonds")} />
             </div>
           ) : null}
         </div>
       </section>
     </GizmoShell>
   );
+}
+
+function latestStatsForPlayer(player: unknown) {
+  if (!player || typeof player !== "object") return null;
+  const record = player as Record<string, unknown>;
+  const snapshots = record.snapshots;
+  if (Array.isArray(snapshots)) return snapshots[0] ?? null;
+  return record.stats ?? null;
+}
+
+function statValue(source: unknown, primary: string, fallback?: string) {
+  if (!source || typeof source !== "object") return 0;
+  const record = source as Record<string, unknown>;
+  return Number(record[primary] ?? (fallback ? record[fallback] : 0) ?? 0);
 }
 
 function Stat({ label, value }: { label: string; value: number }) {

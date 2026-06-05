@@ -3,10 +3,18 @@ import { boards, players as fallbackPlayers, worldStats as fallbackWorldStats } 
 export type DashboardPlayer = typeof fallbackPlayers[number];
 export type DashboardWorld = typeof fallbackWorldStats;
 
+export function bridgeRequestInit(): RequestInit & { next: { revalidate: number } } {
+  const token = process.env.MINECRAFT_BRIDGE_TOKEN;
+  return {
+    next: { revalidate: 60 },
+    ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}),
+  };
+}
+
 export async function getDashboardData() {
   const bridgeUrl = process.env.MINECRAFT_BRIDGE_URL ?? "http://gizmo-server:3020";
   try {
-    const res = await fetch(`${bridgeUrl}/api/leaderboards`, { next: { revalidate: 60 } });
+    const res = await fetch(`${bridgeUrl}/api/leaderboards`, bridgeRequestInit());
     if (!res.ok) throw new Error(`bridge ${res.status}`);
     const data = await res.json();
     const players = (data.players ?? []).map((p: any, index: number) => ({
