@@ -6,13 +6,13 @@ function format(value: number) { return new Intl.NumberFormat("en").format(value
 
 export function MinecraftDashboard({ players = fallbackPlayers, worldStats = fallbackWorldStats, boards = fallbackBoards, live = false }: { players?: DashboardPlayer[]; worldStats?: DashboardWorld; boards?: typeof fallbackBoards; live?: boolean }) {
   return (
-    <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] px-5 py-6 md:px-10">
-      <section className="mx-auto max-w-7xl space-y-6">
+    <div className="space-y-6">
         <header className="flex flex-col gap-4 rounded-3xl border border-emerald-300/20 bg-white/8 p-6 shadow-2xl shadow-black/30 backdrop-blur md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.35em] text-emerald-200/80">GizmoCraft Command</p>
             <h1 className="mt-2 text-4xl font-black tracking-tight text-white md:text-6xl">Minecraft Dashboard</h1>
             <p className="mt-3 max-w-2xl text-base text-slate-300">Google-login player profiles, public rivalry boards, world telemetry, and every dumb statistic worth making fun of.</p>
+            <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold"><a className="rounded-full bg-emerald-300 px-4 py-2 text-slate-950" href="/profile">Edit profile</a><a className="rounded-full border border-emerald-300/30 px-4 py-2 text-emerald-100" href="/profiles">Public profiles</a></div>
           </div>
           <div className="rounded-2xl border border-lime-300/30 bg-lime-300/10 px-5 py-4 text-right">
             <p className="text-sm text-lime-200">World</p>
@@ -68,8 +68,7 @@ export function MinecraftDashboard({ players = fallbackPlayers, worldStats = fal
             {trackedSignals.map((signal) => <div key={signal} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-200">{signal}</div>)}
           </div>
         </section>
-      </section>
-    </main>
+    </div>
   );
 }
 

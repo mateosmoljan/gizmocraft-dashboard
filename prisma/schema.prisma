@@ -1,87 +1,180 @@
-generator client { provider = "prisma-client-js" }
-
-datasource db { provider = "mysql" url = env("DATABASE_URL") }
-
-model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  image         String?
-  role          UserRole @default(PLAYER)
-  minecraftUuid String?  @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  player        Player?  @relation(fields: [minecraftUuid], references: [uuid])
+generator client {
+  provider = "prisma-client-js"
 }
 
-enum UserRole { PLAYER ADMIN VIEWER }
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PLAYER
+  ADMIN
+  VIEWER
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  emailVerified  DateTime? @map("email_verified")
+  name           String?
+  username       String    @unique
+  image          String?   @db.VarChar(500)
+  role           UserRole  @default(PLAYER)
+  minecraftUuid  String?   @map("minecraft_uuid") @db.VarChar(36)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  accounts       Account[]
+  sessions       Session[]
+  player         Player?   @relation(fields: [minecraftUuid], references: [uuid], onDelete: SetNull)
+
+  @@index([minecraftUuid])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model PlayerEmail {
+  id         BigInt   @id @default(autoincrement())
+  email      String   @unique
+  playerUuid String   @map("player_uuid") @db.VarChar(36)
+  label      String?
+  verified   Boolean  @default(false)
+  source     String   @default("manual")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  player Player @relation(fields: [playerUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([playerUuid])
+  @@map("player_emails")
+}
 
 model Player {
-  uuid          String   @id
-  name          String
-  avatarUrl     String?
-  firstSeenAt   DateTime?
-  lastSeenAt    DateTime?
-  totalPlayMs   BigInt   @default(0)
-  snapshots     PlayerStatSnapshot[]
-  advancements  AdvancementUnlock[]
-  sessions      PlayerSession[]
-  users         User[]
+  uuid         String    @id @db.VarChar(36)
+  name         String
+  avatarUrl    String?   @map("avatar_url") @db.VarChar(500)
+  firstSeenAt  DateTime? @map("first_seen_at")
+  lastSeenAt   DateTime? @map("last_seen_at")
+  totalPlayMs  BigInt    @default(0) @map("total_play_ms")
+
+  snapshots    PlayerStatSnapshot[]
+  advancements AdvancementUnlock[]
+  sessions     PlayerSession[]
+  users        User[]
+  emails       PlayerEmail[]
+
+  @@map("players")
 }
 
 model PlayerStatSnapshot {
-  id          BigInt   @id @default(autoincrement())
-  playerUuid  String
-  capturedAt  DateTime @default(now())
-  deaths      Int      @default(0)
-  mobsKilled  Int      @default(0)
-  blocksMined Int      @default(0)
-  blocksPlaced Int     @default(0)
-  itemsCrafted Int     @default(0)
-  diamondsMined Int    @default(0)
-  distanceCm  BigInt   @default(0)
-  playTicks   BigInt   @default(0)
-  rawStats    Json
-  player      Player   @relation(fields: [playerUuid], references: [uuid])
+  id            BigInt   @id @default(autoincrement())
+  playerUuid    String   @map("player_uuid") @db.VarChar(36)
+  capturedAt    DateTime @default(now()) @map("captured_at")
+  deaths        Int      @default(0)
+  mobsKilled    Int      @default(0) @map("mobs_killed")
+  blocksMined   Int      @default(0) @map("blocks_mined")
+  blocksPlaced  Int      @default(0) @map("blocks_placed")
+  itemsCrafted  Int      @default(0) @map("items_crafted")
+  diamondsMined Int      @default(0) @map("diamonds_mined")
+  distanceCm    BigInt   @default(0) @map("distance_cm")
+  playTicks     BigInt   @default(0) @map("play_ticks")
+  rawStats      Json     @map("raw_stats")
+
+  player Player @relation(fields: [playerUuid], references: [uuid], onDelete: Cascade)
+
   @@index([capturedAt])
   @@index([playerUuid, capturedAt])
+  @@map("player_stat_snapshots")
 }
 
 model AdvancementUnlock {
-  id         BigInt   @id @default(autoincrement())
-  playerUuid String
+  id         BigInt    @id @default(autoincrement())
+  playerUuid String    @map("player_uuid") @db.VarChar(36)
   key        String
-  unlockedAt DateTime?
+  unlockedAt DateTime? @map("unlocked_at")
   raw        Json
-  player     Player @relation(fields: [playerUuid], references: [uuid])
+
+  player Player @relation(fields: [playerUuid], references: [uuid], onDelete: Cascade)
+
   @@unique([playerUuid, key])
+  @@map("advancement_unlocks")
 }
 
 model PlayerSession {
-  id         BigInt   @id @default(autoincrement())
-  playerUuid String
-  joinedAt   DateTime
-  leftAt     DateTime?
-  durationMs BigInt?
-  player     Player @relation(fields: [playerUuid], references: [uuid])
+  id         BigInt    @id @default(autoincrement())
+  playerUuid String    @map("player_uuid") @db.VarChar(36)
+  joinedAt   DateTime  @map("joined_at")
+  leftAt     DateTime? @map("left_at")
+  durationMs BigInt?   @map("duration_ms")
+
+  player Player @relation(fields: [playerUuid], references: [uuid], onDelete: Cascade)
+
   @@index([playerUuid, joinedAt])
+  @@map("player_sessions")
 }
 
 model WorldEvent {
-  id        BigInt   @id @default(autoincrement())
-  type      String
-  playerUuid String?
-  message   String
-  occurredAt DateTime
-  raw       Json?
+  id         BigInt   @id @default(autoincrement())
+  type       String
+  playerUuid String?  @map("player_uuid") @db.VarChar(36)
+  message    String
+  occurredAt DateTime @map("occurred_at")
+  raw        Json?
+
   @@index([type, occurredAt])
+  @@index([playerUuid])
+  @@map("world_events")
 }
 
 model SyncRun {
-  id        BigInt   @id @default(autoincrement())
-  source    String
-  startedAt DateTime @default(now())
-  finishedAt DateTime?
-  status    String
-  details   Json?
+  id         BigInt    @id @default(autoincrement())
+  source     String
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  status     String
+  details    Json?
+
+  @@index([startedAt])
+  @@map("sync_runs")
 }

@@ -30,7 +30,16 @@ Do not expose raw MySQL publicly. Public means public dashboard and authenticate
 2. Collector writes normalized rows into MySQL.
 3. Bridge exposes read APIs: `/health`, `/players`, `/players/:uuid`, `/leaderboards`, `/events`, `/world`.
 4. Vercel UI fetches bridge APIs with a server-side token.
-5. Players authenticate with Google and link to their Minecraft UUID/name.
+5. Players authenticate with Google and link to their Minecraft UUID/name. Known player email addresses can be preloaded into `player_emails`; when that Google email signs in, the app auto-attaches the account to the matching Minecraft UUID. Users can then edit their public username, display name, and profile picture from `/profile`.
+
+## Player profiles
+
+- Public directory: `/profiles`.
+- Public profile route: `/u/[username]`.
+- Settings route: `/profile`.
+- Email linking table: `player_emails(email, player_uuid, label, verified, source)`.
+- Admin API for pre-attaching emails: `POST /api/admin/player-emails` with `{ email, playerUuid, label? }`; requester must have `users.role = ADMIN`.
+- Usernames are normalized slugs and globally unique, so profile URLs remain scalable for many players.
 
 ## Boards
 
