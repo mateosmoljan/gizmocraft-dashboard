@@ -78,15 +78,15 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
             <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/70">App users</p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-2xl font-black text-white">{appStats?.live ? appStats.online : "—"}</p>
+                <p className="text-2xl font-black text-white">{appStats ? appStats.online : "—"}</p>
                 <p className="text-xs text-slate-400">online now</p>
               </div>
               <div>
-                <p className="text-2xl font-black text-white">{appStats?.live ? appStats.totalSignedIn : "—"}</p>
+                <p className="text-2xl font-black text-white">{appStats ? appStats.totalSignedIn : "—"}</p>
                 <p className="text-xs text-slate-400">signed in total</p>
               </div>
             </div>
-            <p className="mt-3 text-[11px] text-slate-500">App activity only, not Minecraft players.</p>
+            <p className="mt-3 text-[11px] text-slate-500">{appStats && !appStats.live ? "Showing your signed-in session; bridge stats pending." : "App activity only, not Minecraft players."}</p>
           </div>
         </aside>
 

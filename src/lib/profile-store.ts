@@ -133,7 +133,7 @@ export async function touchAndReadAppUserStats(email: string): Promise<AppUserSt
     return await databaseTouchAppActivity(email);
   } catch (dbError) {
     console.warn("App stats database unavailable", dbError);
-    return { online: 0, totalSignedIn: 0, live: false };
+    return { online: 1, totalSignedIn: 1, live: false };
   }
 }
 
