@@ -74,6 +74,34 @@ async function bridgePublicProfiles(limit = 100) {
   return data.profiles;
 }
 
+async function databasePlayerActivity(minecraftUuid?: string | null) {
+  if (!minecraftUuid) return null;
+  return withProfileDbTimeout(prisma.player.findUnique({
+    where: { uuid: minecraftUuid },
+    select: {
+      totalPlayMs: true,
+      sessions: {
+        orderBy: { joinedAt: "desc" },
+        take: 12,
+        select: { id: true, joinedAt: true, leftAt: true, durationMs: true },
+      },
+    },
+  })).catch(() => null);
+}
+
+async function withDatabasePlayerActivity(profile: any) {
+  const activity = await databasePlayerActivity(profile?.minecraftUuid ?? profile?.player?.uuid);
+  if (!activity) return profile;
+  return {
+    ...profile,
+    player: {
+      ...(profile.player ?? {}),
+      totalPlayMs: profile.player?.totalPlayMs ?? activity.totalPlayMs,
+      sessions: profile.player?.sessions ?? activity.sessions,
+    },
+  };
+}
+
 async function bridgeTouchAppActivity(email: string) {
   const data = await bridgeJson<{ stats: AppUserStats }>("/api/app-activity", {
     method: "POST",
@@ -115,18 +143,18 @@ export async function publicProfileByUsername(username: string) {
     try {
       const profiles = await bridgePublicProfiles(200);
       const bridgeProfile = profiles.find((entry) => entry.minecraftUuid === knownProfile.minecraftUuid);
-      if (bridgeProfile) return { ...bridgeProfile, username: knownProfile.username };
+      if (bridgeProfile) return withDatabasePlayerActivity({ ...bridgeProfile, username: knownProfile.username });
     } catch {
       // Fall through to the normal lookup path.
     }
   }
   try {
     const data = await bridgeJson<{ profile: any }>(`/api/profiles/${encodeURIComponent(username)}`);
-    return data.profile;
+    return withDatabasePlayerActivity(data.profile);
   } catch {
     const dbProfile = await prisma.user.findUnique({
       where: { username },
-      include: { player: { include: { snapshots: { orderBy: { capturedAt: "desc" }, take: 1 } } } },
+      include: { player: { include: { snapshots: { orderBy: { capturedAt: "desc" }, take: 1 }, sessions: { orderBy: { joinedAt: "desc" }, take: 12 } } } },
     }).catch(() => null);
     return dbProfile ?? (await knownPublicProfiles()).find((entry) => entry.username === username) ?? null;
   }
