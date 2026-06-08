@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { bridgeRequestInit } from "@/lib/dashboard-data";
 import { knownPlayerProfiles, knownProfileForEmail, knownPublicProfiles } from "@/lib/known-profiles";
 import { normalizeEmail, usernameFromEmail } from "@/lib/profile-model";
+import { notifyNewUserSignup } from "@/lib/signup-notifications";
 
 const PROFILE_DB_TIMEOUT_MS = 900;
 type ProfileUpdate = { username?: string; name?: string; image?: string | null };
@@ -219,7 +220,8 @@ export async function getOrCreateUserProfile(input: { email: string; name?: stri
 
 export async function recordUserSignIn(input: { email: string; name?: string | null; image?: string | null; emailVerified?: Date | null }) {
   const profile = await getOrCreateUserProfile(input);
-  return prisma.user.update({
+  const isNewSignup = profile.signInCount === 0;
+  const updated = await prisma.user.update({
     where: { id: profile.id },
     data: {
       lastLoginAt: new Date(),
@@ -229,6 +231,15 @@ export async function recordUserSignIn(input: { email: string; name?: string | n
     },
     include: { player: true },
   });
+  if (isNewSignup) {
+    await notifyNewUserSignup({
+      email: updated.email,
+      name: updated.name,
+      username: updated.username,
+      minecraftUuid: updated.minecraftUuid,
+    }).catch((error) => console.warn("New-user signup email notification failed", error));
+  }
+  return updated;
 }
 
 export async function recordOrFallbackUserSignIn(input: { email: string; name?: string | null; image?: string | null; emailVerified?: Date | null }) {
