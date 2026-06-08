@@ -23,6 +23,18 @@ function cleanString(value: unknown, maxLength: number) {
   return cleaned.length ? cleaned : undefined;
 }
 
+export function cleanProfileImageUrl(value: unknown) {
+  const cleaned = cleanString(value, 500);
+  if (!cleaned) return undefined;
+  try {
+    const url = new URL(cleaned);
+    if (!["http:", "https:"].includes(url.protocol)) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function usernameFromEmail(email: string) {
   return normalizeUsername(email.split("@")[0] ?? "player") || "player";
 }
@@ -31,10 +43,10 @@ export function profileUpdateFromInput(input: EditableProfileInput) {
   const usernameSource = cleanString(input.username, 64);
   const username = usernameSource ? normalizeUsername(usernameSource) : undefined;
   const name = cleanString(input.name, 80);
-  const image = cleanString(input.image, 500);
+  const image = cleanProfileImageUrl(input.image);
   return {
     ...(username ? { username } : {}),
     ...(name ? { name } : {}),
-    ...(image ? { image } : {}),
+    image: image ?? null,
   };
 }

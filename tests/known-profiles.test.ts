@@ -4,10 +4,10 @@ import { knownPlayerProfiles, knownProfileByUsername, knownProfileForEmail } fro
 
 describe("known GizmoCraft profiles", () => {
   it("defines stable public profile usernames and Minecraft UUID attachments", () => {
-    assert.deepEqual(knownPlayerProfiles.map((profile) => profile.username), ["gmrooster", "djolearmani", "gizmeta"]);
+    assert.deepEqual(knownPlayerProfiles.map((profile) => profile.username), ["gmrooster", "djolearmani", "sudodosu"]);
     assert.equal(knownProfileByUsername("GMRooster")?.minecraftUuid, "5e8db67a-1249-44dc-a053-713bd8a8844a");
     assert.equal(knownProfileByUsername("DjoleArmani")?.minecraftUuid, "1fa45424-66b3-4996-aeb7-089d78bc367c");
-    assert.equal(knownProfileByUsername("Gizmeta")?.minecraftUuid, "947b65ff-be0f-4e25-8778-25e53f93e423");
+    assert.equal(knownProfileByUsername("sudodosu")?.minecraftUuid, "947b65ff-be0f-4e25-8778-25e53f93e423");
   });
 
   it("stores only normalized email hashes for pre-attachment", () => {

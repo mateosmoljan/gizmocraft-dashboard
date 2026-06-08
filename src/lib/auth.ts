@@ -1,17 +1,17 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { getOrCreateUserProfile } from "@/lib/profile-store";
+import { getOrFallbackUserProfile, recordOrFallbackUserSignIn } from "@/lib/profile-store";
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
 export const authOptions: NextAuthOptions = {
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   providers: googleClientId && googleClientSecret ? [GoogleProvider({ clientId: googleClientId, clientSecret: googleClientSecret })] : [],
   callbacks: {
     async signIn({ user, profile }) {
       if (!user.email) return false;
-      await getOrCreateUserProfile({
+      await recordOrFallbackUserSignIn({
         email: user.email,
         name: user.name ?? profile?.name ?? null,
         image: user.image ?? null,
@@ -20,9 +20,9 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async jwt({ token, user }) {
-      const email = user?.email ?? token.email;
+      const email = user?.email;
       if (!email) return token;
-      const profile = await getOrCreateUserProfile({ email, name: token.name ?? user?.name ?? null, image: token.picture ?? user?.image ?? null });
+      const profile = await getOrFallbackUserProfile({ email, name: user.name ?? token.name ?? null, image: user.image ?? token.picture ?? null });
       token.sub = profile.id;
       token.username = profile.username;
       token.minecraftUuid = profile.minecraftUuid;

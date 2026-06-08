@@ -24,7 +24,7 @@ export const knownPlayerProfiles = [
     emailSha256: "b2327aa51941924d2610f3223725f19713cd1c7636ba98f05124cf3883dfc0aa",
   },
   {
-    username: "gizmeta",
+    username: "sudodosu",
     name: "Gizmeta",
     minecraftUuid: "947b65ff-be0f-4e25-8778-25e53f93e423",
     emailSha256: "42d94604a3228273235d286b407dd05765f304b7ad099373c8b9dca267c962b5",

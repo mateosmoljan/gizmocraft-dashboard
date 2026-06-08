@@ -2,13 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Settings, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Activity, BarChart3, Settings, Users } from "lucide-react";
+import { MinecraftLoading } from "@/components/minecraft-loading";
 import { gizmoNavItems } from "@/lib/navigation";
 
-const icons = [BarChart3, Users, Settings];
+const icons = [BarChart3, Activity, Users, Settings];
 
 export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecraft command center" }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const pathname = usePathname();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
+
+  const pending = pendingHref !== null && pendingHref !== pathname;
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] text-white">
       <div className="flex min-h-screen flex-col lg:flex-row">
@@ -24,13 +34,16 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
           <nav className="mt-5 flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {gizmoNavItems.map((item, index) => {
               const Icon = icons[index];
-              const active = pathname === item.href || (item.href === "/dashboard" && pathname === "/");
+              const activePath = pendingHref ?? pathname;
+              const active = activePath === item.href || (item.href === "/dashboard" && activePath === "/");
+              const itemPending = pendingHref === item.href && pending;
               return (
-                <Link key={item.href} href={item.href} className={`group flex min-w-[160px] items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition lg:min-w-0 ${active ? "border-emerald-300/40 bg-emerald-300/12 text-white shadow-[0_0_22px_rgba(52,211,153,0.14)]" : "border-transparent text-slate-400 hover:border-emerald-300/20 hover:bg-white/6 hover:text-slate-100"}`}>
-                  <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <Link key={item.href} href={item.href} onClick={() => setPendingHref(item.href)} className={`group relative flex min-w-[160px] items-center gap-3 overflow-hidden rounded-2xl border px-4 py-3 text-sm transition lg:min-w-0 ${active ? "scale-[1.02] border-emerald-300/40 bg-emerald-300/12 text-white shadow-[0_0_22px_rgba(52,211,153,0.14)]" : "border-transparent text-slate-400 hover:border-emerald-300/20 hover:bg-white/6 hover:text-slate-100"}`}>
+                  {itemPending ? <span className="absolute inset-x-3 bottom-1 h-0.5 animate-pulse rounded-full bg-emerald-300 shadow-[0_0_16px_rgba(52,211,153,0.8)]" /> : null}
+                  <Icon className={`h-5 w-5 shrink-0 ${itemPending ? "animate-bounce text-emerald-200" : ""}`} aria-hidden="true" />
                   <span className="min-w-0">
                     <span className="block font-bold">{item.name}</span>
-                    <span className="hidden truncate text-xs text-slate-500 lg:block">{item.description}</span>
+                    <span className="hidden truncate text-xs text-slate-500 lg:block">{itemPending ? "Loading chunks…" : item.description}</span>
                   </span>
                 </Link>
               );
@@ -49,7 +62,7 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
             <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">{title}</p>
             <p className="mt-1 text-sm text-slate-300">{subtitle}</p>
           </header>
-          {children}
+          {pending ? <MinecraftLoading compact /> : children}
         </main>
       </div>
     </div>

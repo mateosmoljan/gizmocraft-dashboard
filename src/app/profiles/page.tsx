@@ -1,15 +1,26 @@
+import { getServerSession } from "next-auth";
 import { GizmoShell } from "@/components/gizmo-shell";
+import { authOptions } from "@/lib/auth";
+import { knownProfileForEmail } from "@/lib/known-profiles";
 import { publicProfiles } from "@/lib/profile-store";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilesPage() {
+  const session = await getServerSession(authOptions);
   let profiles: Awaited<ReturnType<typeof publicProfiles>> = [];
   try {
     profiles = await publicProfiles(200);
   } catch {
     profiles = [];
   }
+  const known = session?.user?.email ? knownProfileForEmail(session.user.email) : null;
+  const sessionImage = session?.user?.image ?? null;
+  const displayProfiles = profiles.map((profile) =>
+    known && sessionImage && (profile.username === known.username || profile.minecraftUuid === known.minecraftUuid)
+      ? { ...profile, image: profile.image ?? sessionImage }
+      : profile,
+  );
 
   return (
     <GizmoShell title="Public profiles" subtitle="Browse GizmoCraft users, usernames, and linked Minecraft players.">
@@ -22,9 +33,9 @@ export default async function ProfilesPage() {
           <a className="rounded-full bg-emerald-300 px-5 py-3 font-black text-slate-950" href="/profile">Edit my profile</a>
         </div>
 
-        {profiles.length ? (
+        {displayProfiles.length ? (
           <div className="grid gap-4 md:grid-cols-3">
-            {profiles.map((p) => (
+            {displayProfiles.map((p) => (
               <a key={p.id} href={`/u/${p.username}`} className="rounded-3xl border border-white/10 bg-white/8 p-5 backdrop-blur transition hover:bg-white/12">
                 <div className="mb-4 grid size-16 place-items-center overflow-hidden rounded-2xl bg-emerald-300/10 text-3xl">
                   {p.image ? <img src={p.image} alt="" className="h-full w-full object-cover" /> : "🧑"}

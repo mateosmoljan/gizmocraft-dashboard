@@ -10,15 +10,15 @@ afterEach(() => {
 });
 
 describe("bridge requests", () => {
-  it("keeps bridge fetches server-cached without requiring a token locally", () => {
+  it("keeps bridge fetches uncached without requiring a token locally", () => {
     delete process.env.MINECRAFT_BRIDGE_TOKEN;
-    assert.deepEqual(bridgeRequestInit(), { next: { revalidate: 60 } });
+    assert.deepEqual(bridgeRequestInit(), { cache: "no-store" });
   });
 
   it("sends the configured bridge bearer token when present", () => {
     process.env.MINECRAFT_BRIDGE_TOKEN = "secret-token";
     assert.deepEqual(bridgeRequestInit(), {
-      next: { revalidate: 60 },
+      cache: "no-store",
       headers: { authorization: "Bearer secret-token" },
     });
   });
