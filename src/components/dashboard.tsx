@@ -71,6 +71,10 @@ export function MinecraftDashboard({ players = fallbackPlayers, worldStats = fal
                     <Stat label="Diamonds" value={String(p.diamonds)} />
                     <Stat label="Mobs" value={format(p.mobsKilled)} />
                     <Stat label="Distance" value={`${p.distanceKm}km`} />
+                    <Stat label="Placed" value={format(p.blocksPlaced)} />
+                    <Stat label="Crafted" value={format(p.itemsCrafted)} />
+                    <Stat label="Food" value={format(p.foodEaten)} />
+                    <Stat label="Damage taken" value={format(p.damageTaken)} />
                   </div>
                 </article>
               ))}

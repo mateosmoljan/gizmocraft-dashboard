@@ -39,6 +39,10 @@ export async function getDashboardData() {
       blocksMined: p.blocksMined ?? 0,
       diamonds: p.diamonds ?? 0,
       foodEaten: p.foodEaten ?? 0,
+      blocksPlaced: p.blocksPlaced ?? 0,
+      itemsCrafted: p.itemsCrafted ?? 0,
+      damageDealt: p.damageDealt ?? 0,
+      damageTaken: p.damageTaken ?? 0,
       lastSeen: p.lastSeen ? formatZagrebDateTime(p.lastSeen) : "tracked",
     }));
     return {
