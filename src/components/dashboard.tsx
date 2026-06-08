@@ -7,6 +7,11 @@ import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
+function formatBoardValue(value: number, suffix: string) {
+  const rounded = Number.isInteger(value) ? value : Number(value.toFixed(2));
+  return `${format(rounded)} ${suffix}`;
+}
+
 export function MinecraftDashboard({ players = fallbackPlayers, worldStats = fallbackWorldStats, boards = fallbackBoards, live = false }: { players?: DashboardPlayer[]; worldStats?: DashboardWorld; boards?: typeof fallbackBoards; live?: boolean }) {
   const [data, setData] = useState({ players, worldStats, boards, live });
 
@@ -73,13 +78,34 @@ export function MinecraftDashboard({ players = fallbackPlayers, worldStats = fal
           </div>
 
           <aside className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-            <h2 className="text-2xl font-black">Public shame boards</h2>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-black">Public shame boards</h2>
+                <p className="mt-1 text-sm text-slate-400">Live rivalry cards from the world files.</p>
+              </div>
+              <span className="rounded-full border border-rose-300/30 bg-rose-300/10 px-3 py-1 text-xs font-bold text-rose-100">{currentBoards.length} boards</span>
+            </div>
             <div className="mt-4 space-y-4">
               {currentBoards.map((b) => {
                 const ascending = "ascending" in b && b.ascending;
                 const ranked = [...currentPlayers].sort((a,bp) => ascending ? Number(a[b.field]) - Number(bp[b.field]) : Number(bp[b.field]) - Number(a[b.field]));
                 const winner = ranked[0];
-                return <div key={b.title} className="rounded-2xl border border-emerald-300/10 bg-emerald-300/8 p-4"><p className="text-sm text-emerald-200">{b.title}</p><p className="mt-1 text-xl font-black">{winner.name}</p><p className="text-sm text-slate-300">{format(Number(winner[b.field]))} {b.suffix}</p></div>;
+                const podium = ranked.slice(0, 3);
+                return (
+                  <div key={b.title} className="rounded-2xl border border-emerald-300/10 bg-emerald-300/8 p-4">
+                    <p className="text-sm text-emerald-200">{b.title} · {b.metric}</p>
+                    <p className="mt-1 text-xl font-black">{winner.name}</p>
+                    <p className="text-sm text-slate-300">{formatBoardValue(Number(winner[b.field]), b.suffix)} · {"roast" in b ? b.roast : "top tracked player"}</p>
+                    <div className="mt-3 space-y-2">
+                      {podium.map((p, index) => (
+                        <div key={`${b.title}-${p.uuid}`} className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm">
+                          <span className="font-bold text-slate-100">#{index + 1} {p.name}</span>
+                          <span className="text-slate-300">{formatBoardValue(Number(p[b.field]), b.suffix)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
               })}
             </div>
           </aside>

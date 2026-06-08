@@ -15,8 +15,11 @@ export const worldStats = {
 };
 
 export const boards = [
-  { title: "Richest Miner", metric: "Diamonds", field: "diamonds", suffix: "💎" },
-  { title: "Tunnel Goblin", metric: "Blocks mined", field: "blocksMined", suffix: "blocks" },
-  { title: "Mob Menace", metric: "Mobs killed", field: "mobsKilled", suffix: "kills" },
-  { title: "Death Tax", metric: "Deaths", field: "deaths", suffix: "deaths", ascending: true },
+  { title: "Richest Miner", metric: "Diamonds", field: "diamonds", suffix: "💎", roast: "hoarding the shiny stuff" },
+  { title: "Tunnel Goblin", metric: "Blocks mined", field: "blocksMined", suffix: "blocks", roast: "digging like rent is due" },
+  { title: "Mob Menace", metric: "Mobs killed", field: "mobsKilled", suffix: "kills", roast: "public enemy of mobs" },
+  { title: "Death Tax", metric: "Deaths", field: "deaths", suffix: "deaths", roast: "somehow still alive", ascending: true },
+  { title: "Wanderer", metric: "Distance", field: "distanceKm", suffix: "km", roast: "allergic to staying home" },
+  { title: "Addict Board", metric: "Playtime", field: "playHours", suffix: "hours", roast: "grass untouched" },
+  { title: "Food Vacuum", metric: "Food eaten", field: "foodEaten", suffix: "snacks", roast: "server fridge destroyer" },
 ] as const;
