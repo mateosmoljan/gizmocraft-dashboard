@@ -1,0 +1,10 @@
+.git
+.next
+node_modules
+.env
+.env.*
+bridge/node_modules
+bridge/.env
+logs
+uploads
+.runtime

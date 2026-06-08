@@ -4,6 +4,14 @@ import { syncMinecraftStats } from "./sync.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 3020);
+const bridgeToken = process.env.MINECRAFT_BRIDGE_TOKEN;
+
+app.use((req, res, next) => {
+  if (!bridgeToken) return next();
+  const expected = `Bearer ${bridgeToken}`;
+  if (req.headers.authorization === expected) return next();
+  return res.status(401).json({ error: "unauthorized" });
+});
 
 function scalar(row, key) { return Number(row[key] ?? 0); }
 function rawStats(row) {
@@ -40,17 +48,21 @@ function toPlayer(row) {
   };
 }
 
-app.get("/api/health", async (_req, res) => {
+async function handleHealth(_req, res) {
   try { const db = await pool(); const [rows] = await db.query("SELECT COUNT(*) players FROM players"); await db.end(); res.json({ status: "ok", app: "minecraft-dashboard-bridge", players: rows[0].players }); }
   catch (err) { res.status(500).json({ status: "error", message: String(err?.message ?? err) }); }
-});
+}
+app.get("/api/health", handleHealth);
+app.get("/health", handleHealth);
 
-app.post("/api/sync", async (_req, res) => {
+async function handleSync(_req, res) {
   try { res.json(await syncMinecraftStats()); }
   catch (err) { res.status(500).json({ status: "error", message: String(err?.message ?? err) }); }
-});
+}
+app.post("/api/sync", handleSync);
+app.post("/sync", handleSync);
 
-app.get("/api/leaderboards", async (_req, res) => {
+async function handleLeaderboards(_req, res) {
   const db = await pool();
   const [rows] = await db.query(`SELECT p.uuid,p.name,p.last_seen_at,s.deaths,s.mobs_killed,s.blocks_mined,s.blocks_placed,s.items_crafted,s.diamonds_mined,s.distance_cm,s.play_ticks,s.raw_stats
     FROM players p JOIN player_stat_snapshots s ON s.id=(SELECT MAX(id) FROM player_stat_snapshots WHERE player_uuid=p.uuid)
@@ -59,6 +71,8 @@ app.get("/api/leaderboards", async (_req, res) => {
   await db.end();
   const players = rows.map(toPlayer);
   res.json({ world: { name: "Gizmo Ivan — Dole", difficulty: "Hard Survival", trackedPlayers: players.length, lastSync: syncRows[0]?.finished_at ?? null }, players });
-});
+}
+app.get("/api/leaderboards", handleLeaderboards);
+app.get("/leaderboards", handleLeaderboards);
 
 app.listen(port, "0.0.0.0", () => console.log(`minecraft-dashboard-bridge ready on ${port}`));
