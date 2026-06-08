@@ -21,7 +21,7 @@ async function syncBridgeStats(bridgeUrl: string) {
 }
 
 export async function getDashboardData() {
-  const bridgeUrl = process.env.MINECRAFT_BRIDGE_URL ?? "http://gizmo-server:3020";
+  const bridgeUrl = process.env.MINECRAFT_BRIDGE_URL || "http://gizmo-server:3020";
   try {
     await syncBridgeStats(bridgeUrl);
     const res = await fetch(`${bridgeUrl}/api/leaderboards`, bridgeRequestInit());

@@ -6,8 +6,8 @@ import { normalizeEmail, usernameFromEmail } from "@/lib/profile-model";
 const PROFILE_DB_TIMEOUT_MS = 900;
 type ProfileUpdate = { username?: string; name?: string; image?: string | null };
 
-function bridgeUrl() {
-  return process.env.MINECRAFT_BRIDGE_URL ?? "http://gizmo-server:3020";
+export function bridgeUrl() {
+  return process.env.MINECRAFT_BRIDGE_URL || "http://gizmo-server:3020";
 }
 
 function withProfileDbTimeout<T>(task: Promise<T>) {
@@ -200,9 +200,23 @@ export async function updateUserProfileForEmail(email: string, input: ProfileUpd
   const image = input.image ?? googleImage ?? null;
   try {
     return await bridgeUpdateUserProfile(normalizedEmail, { ...input, image }, googleImage);
-  } catch {
-    const profile = await getOrCreateUserProfile({ email: normalizedEmail, image: googleImage });
-    return updateUserProfile(profile.id, { ...input, image });
+  } catch (bridgeError) {
+    console.warn("Profile bridge update unavailable; trying direct profile database", bridgeError);
+  }
+
+  try {
+    const profile = await withProfileDbTimeout(getOrCreateUserProfile({ email: normalizedEmail, image: googleImage }));
+    return await withProfileDbTimeout(updateUserProfile(profile.id, { ...input, image }));
+  } catch (dbError) {
+    console.warn("Profile database update unavailable; returning fallback profile", dbError);
+    const fallback = fallbackUserProfile({ email: normalizedEmail, image: googleImage });
+    return {
+      ...fallback,
+      username: input.username ?? fallback.username,
+      name: input.name ?? fallback.name,
+      image,
+      updatedAt: new Date(),
+    };
   }
 }
 
