@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Profile = {
   username: string;
@@ -13,6 +13,50 @@ type Profile = {
 export function ProfileSettings({ profile }: { profile: Profile }) {
   const [form, setForm] = useState({ username: profile.username, name: profile.name ?? "", image: profile.image ?? "" });
   const [status, setStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function importProfileImage(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setStatus("Choose an image file.");
+      return;
+    }
+
+    setStatus("Preparing image…");
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.src = objectUrl;
+    await image.decode();
+
+    const maxSize = 512;
+    const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(objectUrl);
+
+    let dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+    let quality = 0.72;
+    while (dataUrl.length > 90_000 && canvas.width > 160 && canvas.height > 160) {
+      const nextCanvas = document.createElement("canvas");
+      nextCanvas.width = Math.round(canvas.width * 0.82);
+      nextCanvas.height = Math.round(canvas.height * 0.82);
+      nextCanvas.getContext("2d")?.drawImage(canvas, 0, 0, nextCanvas.width, nextCanvas.height);
+      canvas.width = nextCanvas.width;
+      canvas.height = nextCanvas.height;
+      canvas.getContext("2d")?.drawImage(nextCanvas, 0, 0);
+      dataUrl = canvas.toDataURL("image/jpeg", quality);
+      quality = Math.max(0.58, quality - 0.06);
+    }
+
+    if (dataUrl.length > 100_000) {
+      setStatus("Image is too large. Choose a smaller image or crop it first.");
+      return;
+    }
+
+    setForm((current) => ({ ...current, image: dataUrl }));
+    setStatus("Image imported. Save profile to publish it.");
+  }
 
   async function save() {
     setStatus("Saving…");
@@ -29,9 +73,32 @@ export function ProfileSettings({ profile }: { profile: Profile }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
       <aside className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-        <div className="mb-4 size-28 overflow-hidden rounded-3xl border border-emerald-300/20 bg-emerald-300/10 text-5xl grid place-items-center">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="group relative mb-4 grid size-28 place-items-center overflow-hidden rounded-3xl border border-emerald-300/20 bg-emerald-300/10 text-5xl outline-none ring-emerald-300/40 transition hover:border-emerald-200/60 focus-visible:ring-4"
+          aria-label="Import profile image from your device"
+          title="Click to import a profile image"
+        >
           {form.image ? <img src={form.image} alt="Profile picture" className="h-full w-full object-cover" /> : "🧑"}
-        </div>
+          <span className="absolute inset-0 grid place-items-center bg-black/55 text-sm font-black text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+            <span className="grid gap-1 text-center">
+              <span className="text-3xl">✎</span>
+              <span>Edit</span>
+            </span>
+          </span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void importProfileImage(file);
+            event.currentTarget.value = "";
+          }}
+        />
         <h2 className="text-2xl font-black">{form.name || profile.email}</h2>
         <p className="text-emerald-200">@{form.username}</p>
         <p className="mt-3 text-sm text-slate-400">Google email: {profile.email}</p>
@@ -47,7 +114,7 @@ export function ProfileSettings({ profile }: { profile: Profile }) {
           <label className="grid gap-2 text-sm text-slate-300">
             Profile image URL
             <input className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white" placeholder="https://..." value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} />
-            <span className="text-xs text-slate-500">Leave empty to use your Google account image by default.</span>
+            <span className="text-xs text-slate-500">Click the avatar to import from your PC or phone gallery, or paste an image URL. Leave empty to use your Google account image by default.</span>
           </label>
           <button type="button" onClick={() => setForm({ ...form, image: "" })} className="w-fit rounded-full border border-white/10 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-white/10">Use Google image</button>
           <button type="button" onClick={save} className="w-fit rounded-full bg-emerald-300 px-5 py-3 font-black text-slate-950">Save profile</button>

@@ -23,9 +23,16 @@ function cleanString(value: unknown, maxLength: number) {
   return cleaned.length ? cleaned : undefined;
 }
 
+function cleanDataImage(value: string) {
+  if (!/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/i.test(value)) return undefined;
+  return value.length <= 100_000 ? value : undefined;
+}
+
 export function cleanProfileImageUrl(value: unknown) {
-  const cleaned = cleanString(value, 500);
+  const cleaned = cleanString(value, 100_000);
   if (!cleaned) return undefined;
+  const dataImage = cleanDataImage(cleaned);
+  if (dataImage) return dataImage;
   try {
     const url = new URL(cleaned);
     if (!["http:", "https:"].includes(url.protocol)) return undefined;

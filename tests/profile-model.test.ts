@@ -18,4 +18,9 @@ describe("profile model helpers", () => {
       { username: "cool-name", name: "Mateo", image: "https://example.com/a.png" },
     );
   });
+
+  it("accepts compressed imported profile images as data URLs", () => {
+    const image = "data:image/jpeg;base64," + Buffer.from("small avatar").toString("base64");
+    assert.equal(profileUpdateFromInput({ image }).image, image);
+  });
 });

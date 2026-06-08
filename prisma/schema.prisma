@@ -19,7 +19,7 @@ model User {
   emailVerified  DateTime? @map("email_verified")
   name           String?
   username       String    @unique
-  image          String?   @db.VarChar(500)
+  image          String?   @db.LongText
   role           UserRole  @default(PLAYER)
   minecraftUuid  String?   @map("minecraft_uuid") @db.VarChar(36)
   lastLoginAt    DateTime? @map("last_login_at")
