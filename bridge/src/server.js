@@ -5,6 +5,9 @@ import { syncMinecraftStats } from "./sync.js";
 const app = express();
 const port = Number(process.env.PORT ?? 3020);
 const bridgeToken = process.env.MINECRAFT_BRIDGE_TOKEN;
+const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+app.use(express.json({ limit: "1mb" }));
 
 app.use((req, res, next) => {
   if (!bridgeToken) return next();
@@ -28,6 +31,7 @@ function foodEaten(raw) {
   return foodNames.reduce((sum, item) => sum + Number(used[`minecraft:${item}`] ?? 0), 0);
 }
 function custom(raw, key) { return Number(raw?.stats?.["minecraft:custom"]?.[key] ?? 0); }
+function normalizeEmail(value) { return String(value ?? "").trim().toLowerCase(); }
 function toPlayer(row) {
   const raw = rawStats(row);
   return {
@@ -74,5 +78,42 @@ async function handleLeaderboards(_req, res) {
 }
 app.get("/api/leaderboards", handleLeaderboards);
 app.get("/leaderboards", handleLeaderboards);
+
+async function readAppStats(db) {
+  const onlineSince = new Date(Date.now() - APP_ONLINE_WINDOW_MS);
+  const [onlineRows] = await db.query("SELECT COUNT(*) online FROM users WHERE app_last_seen_at >= ?", [onlineSince]);
+  const [totalRows] = await db.query("SELECT COUNT(*) total_signed_in FROM users WHERE sign_in_count > 0");
+  return { online: Number(onlineRows[0]?.online ?? 0), totalSignedIn: Number(totalRows[0]?.total_signed_in ?? 0), live: true };
+}
+
+async function handleAppStats(_req, res) {
+  try {
+    const db = await pool();
+    const stats = await readAppStats(db);
+    await db.end();
+    res.json({ stats });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message ?? err) });
+  }
+}
+
+async function handleAppActivity(req, res) {
+  const email = normalizeEmail(req.body?.email);
+  if (!email) return res.status(400).json({ error: "email required" });
+  try {
+    const db = await pool();
+    await db.query("UPDATE users SET app_last_seen_at = NOW(3) WHERE email = ?", [email]);
+    const stats = await readAppStats(db);
+    await db.end();
+    res.json({ stats });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message ?? err) });
+  }
+}
+
+app.get("/api/app-stats", handleAppStats);
+app.get("/app-stats", handleAppStats);
+app.post("/api/app-activity", handleAppActivity);
+app.post("/app-activity", handleAppActivity);
 
 app.listen(port, "0.0.0.0", () => console.log(`minecraft-dashboard-bridge ready on ${port}`));

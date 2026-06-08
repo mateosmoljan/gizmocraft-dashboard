@@ -5,6 +5,8 @@ import { normalizeEmail, usernameFromEmail } from "@/lib/profile-model";
 
 const PROFILE_DB_TIMEOUT_MS = 900;
 type ProfileUpdate = { username?: string; name?: string; image?: string | null };
+export type AppUserStats = { online: number; totalSignedIn: number; live: boolean };
+const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 export function bridgeUrl() {
   return process.env.MINECRAFT_BRIDGE_URL || "http://gizmo-server:3020";
@@ -70,6 +72,41 @@ async function bridgeUpdateUserProfile(email: string, input: ProfileUpdate, goog
 async function bridgePublicProfiles(limit = 100) {
   const data = await bridgeJson<{ profiles: any[] }>(`/api/profiles?limit=${limit}`);
   return data.profiles;
+}
+
+async function bridgeTouchAppActivity(email: string) {
+  const data = await bridgeJson<{ stats: AppUserStats }>("/api/app-activity", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: normalizeEmail(email) }),
+  });
+  return { ...data.stats, live: true };
+}
+
+async function databaseTouchAppActivity(email: string) {
+  const now = new Date();
+  await withProfileDbTimeout(prisma.user.update({ where: { email: normalizeEmail(email) }, data: { appLastSeenAt: now } }));
+  const onlineSince = new Date(Date.now() - APP_ONLINE_WINDOW_MS);
+  const [online, totalSignedIn] = await withProfileDbTimeout(Promise.all([
+    prisma.user.count({ where: { appLastSeenAt: { gte: onlineSince } } }),
+    prisma.user.count({ where: { signInCount: { gt: 0 } } }),
+  ]));
+  return { online, totalSignedIn, live: true };
+}
+
+export async function touchAndReadAppUserStats(email: string): Promise<AppUserStats> {
+  try {
+    return await bridgeTouchAppActivity(email);
+  } catch (bridgeError) {
+    console.warn("App stats bridge unavailable; trying direct profile database", bridgeError);
+  }
+
+  try {
+    return await databaseTouchAppActivity(email);
+  } catch (dbError) {
+    console.warn("App stats database unavailable", dbError);
+    return { online: 0, totalSignedIn: 0, live: false };
+  }
 }
 
 export async function publicProfileByUsername(username: string) {

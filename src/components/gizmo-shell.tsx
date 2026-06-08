@@ -8,21 +8,39 @@ import { MinecraftLoading } from "@/components/minecraft-loading";
 import { gizmoNavItems } from "@/lib/navigation";
 
 const icons = [BarChart3, Activity, Users, Settings];
+type AppStats = { online: number; totalSignedIn: number; live: boolean };
 
 export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecraft command center" }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [appStats, setAppStats] = useState<AppStats | null>(null);
 
   useEffect(() => {
     setPendingHref(null);
   }, [pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAppStats() {
+      const res = await fetch("/api/app-stats", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!cancelled) setAppStats(data.stats);
+    }
+    void loadAppStats();
+    const interval = window.setInterval(() => void loadAppStats(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const pending = pendingHref !== null && pendingHref !== pathname;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] text-white">
       <div className="flex min-h-screen flex-col lg:flex-row">
-        <aside className="border-b border-white/10 bg-slate-950/75 px-4 py-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
+        <aside className="flex flex-col border-b border-white/10 bg-slate-950/75 px-4 py-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
           <div className="flex items-center gap-3">
             <div className="grid size-11 place-items-center rounded-2xl border border-emerald-300/30 bg-emerald-300/12 text-2xl shadow-[0_0_24px_rgba(52,211,153,0.16)]">⛏️</div>
             <div>
@@ -54,6 +72,21 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
             <p className="text-xs uppercase tracking-[0.25em] text-lime-200/70">World</p>
             <p className="mt-2 font-black">Gizmo Ivan — Dole</p>
             <p className="mt-1 text-sm text-slate-400">Hard survival · live bridge</p>
+          </div>
+
+          <div className="mt-4 rounded-3xl border border-emerald-300/20 bg-emerald-300/8 p-4 lg:mt-auto">
+            <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/70">App users</p>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-2xl font-black text-white">{appStats?.live ? appStats.online : "—"}</p>
+                <p className="text-xs text-slate-400">online now</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black text-white">{appStats?.live ? appStats.totalSignedIn : "—"}</p>
+                <p className="text-xs text-slate-400">signed in total</p>
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] text-slate-500">App activity only, not Minecraft players.</p>
           </div>
         </aside>
 
