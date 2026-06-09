@@ -70,6 +70,11 @@ async function bridgeUpdateUserProfile(email: string, input: ProfileUpdate, goog
   return data.profile;
 }
 
+async function bridgeReadUserProfile(email: string) {
+  const data = await bridgeJson<{ profile: any }>(`/api/profile?email=${encodeURIComponent(normalizeEmail(email))}`);
+  return data.profile;
+}
+
 async function bridgePublicProfiles(limit = 100) {
   const data = await bridgeJson<{ profiles: any[] }>(`/api/profiles?limit=${limit}`);
   return data.profiles;
@@ -263,7 +268,9 @@ export async function recordOrFallbackUserSignIn(input: { email: string; name?: 
   } catch (error) {
     console.warn("Profile database unavailable; using fallback profile", error);
     const fallback = fallbackUserProfile(input);
-    return await bridgeUpdateUserProfile(input.email, { username: fallback.username, name: fallback.name, image: input.image ?? null }, input.image).catch(() => fallback);
+    return await bridgeReadUserProfile(input.email)
+      .catch(() => bridgeUpdateUserProfile(input.email, { username: fallback.username, name: fallback.name, image: input.image ?? null }, input.image))
+      .catch(() => fallback);
   }
 }
 
@@ -273,7 +280,9 @@ export async function getOrFallbackUserProfile(input: { email: string; name?: st
   } catch (error) {
     console.warn("Profile database unavailable; using fallback profile", error);
     const fallback = fallbackUserProfile(input);
-    return await bridgeUpdateUserProfile(input.email, { username: fallback.username, name: fallback.name, image: input.image ?? null }, input.image).catch(() => fallback);
+    return await bridgeReadUserProfile(input.email)
+      .catch(() => bridgeUpdateUserProfile(input.email, { username: fallback.username, name: fallback.name, image: input.image ?? null }, input.image))
+      .catch(() => fallback);
   }
 }
 

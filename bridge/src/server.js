@@ -412,6 +412,20 @@ async function handleProfileByUsername(req, res) {
   res.json({ profile });
 }
 
+async function handleProfileForEmail(req, res) {
+  const email = normalizeEmail(req.query?.email);
+  if (!email) return res.status(400).json({ error: "email required" });
+  const db = await pool();
+  const [rows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
+      u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid
+    FROM users u LEFT JOIN players p ON p.uuid=u.minecraft_uuid WHERE u.email=? LIMIT 1`, [email]);
+  if (!rows[0]) { await db.end(); return res.status(404).json({ error: "profile not found" }); }
+  const row = rows[0];
+  const profile = row.uuid ? await profileForPlayerRow(db, row) : { id: row.user_id, email, username: row.username, name: row.user_name, image: row.image ?? null, minecraftUuid: row.minecraft_uuid ?? null, player: null };
+  await db.end();
+  res.json({ profile });
+}
+
 async function handleUpdateProfile(req, res) {
   const email = normalizeEmail(req.body?.email);
   if (!email) return res.status(400).json({ error: "email required" });
@@ -457,6 +471,8 @@ app.get("/api/profiles", handleProfiles);
 app.get("/profiles", handleProfiles);
 app.get("/api/profiles/:username", handleProfileByUsername);
 app.get("/profiles/:username", handleProfileByUsername);
+app.get("/api/profile", handleProfileForEmail);
+app.get("/profile", handleProfileForEmail);
 app.put("/api/profile", handleUpdateProfile);
 app.put("/profile", handleUpdateProfile);
 
