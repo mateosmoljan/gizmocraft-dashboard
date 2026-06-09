@@ -48,6 +48,11 @@ function normalizeUsername(value) {
     .slice(0, 32);
   return username || "player";
 }
+function normalizeMinecraftUsername(value) {
+  const cleaned = String(value ?? "").trim();
+  return /^[A-Za-z0-9_]{1,16}$/.test(cleaned) ? cleaned : null;
+}
+function playerOnlyProfileEmail(uuid) { return `minecraft:${String(uuid ?? "").trim().toLowerCase()}@gizmocraft.local`; }
 function toNumber(value) { return Number(value ?? 0); }
 function bytes(value) { return Number(value ?? 0); }
 function humanBytes(value) {
@@ -353,6 +358,28 @@ async function profileForPlayerRow(db, row) {
   };
 }
 
+async function ensurePlayerOnlyUser(db, row) {
+  const uuid = row.uuid;
+  if (!uuid) return;
+  const [linkedRows] = await db.query("SELECT id FROM users WHERE minecraft_uuid=? LIMIT 1", [uuid]);
+  if (linkedRows[0]) return;
+  const email = playerOnlyProfileEmail(uuid);
+  const displayName = row.name ?? row.player_name ?? uuid;
+  const candidates = [normalizeUsername(displayName), normalizeUsername(`${displayName}-${String(uuid).slice(0, 8)}`)];
+  for (const username of candidates) {
+    try {
+      await db.query(
+        `INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at)
+         VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))`,
+        [email, username, displayName, row.avatar_url ?? null, uuid],
+      );
+      return;
+    } catch (error) {
+      if (!String(error?.message ?? error).includes("Duplicate")) throw error;
+    }
+  }
+}
+
 async function handleProfiles(req, res) {
   const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 200);
   const db = await pool();
@@ -361,7 +388,13 @@ async function handleProfiles(req, res) {
     FROM players p LEFT JOIN users u ON u.minecraft_uuid=p.uuid
     ORDER BY COALESCE(u.updated_at,p.last_seen_at,p.first_seen_at) DESC LIMIT ?`, [limit]);
   const profiles = [];
-  for (const row of rows) profiles.push(await profileForPlayerRow(db, row));
+  for (const row of rows) {
+    await ensurePlayerOnlyUser(db, row);
+    const [profileRows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
+      u.id AS user_id,u.username,u.name AS user_name,u.image,u.minecraft_uuid
+      FROM players p LEFT JOIN users u ON u.minecraft_uuid=p.uuid WHERE p.uuid=? LIMIT 1`, [row.uuid]);
+    profiles.push(await profileForPlayerRow(db, profileRows[0] ?? row));
+  }
   await db.end();
   res.json({ profiles });
 }
@@ -385,11 +418,25 @@ async function handleUpdateProfile(req, res) {
   const username = normalizeUsername(req.body?.username ?? email.split("@")[0]);
   const name = String(req.body?.name ?? username).trim().slice(0, 191) || username;
   const image = req.body?.image ? String(req.body.image) : null;
-  const minecraftUuid = req.body?.minecraftUuid ? String(req.body.minecraftUuid) : null;
+  const requestedMinecraftName = normalizeMinecraftUsername(req.body?.minecraftUsername);
+  let minecraftUuid = req.body?.minecraftUuid ? String(req.body.minecraftUuid) : null;
   const db = await pool();
+  if (!minecraftUuid && requestedMinecraftName) {
+    const [playerRows] = await db.query("SELECT uuid FROM players WHERE LOWER(name)=LOWER(?) LIMIT 1", [requestedMinecraftName]);
+    minecraftUuid = playerRows[0]?.uuid ?? null;
+  }
   const [existingRows] = await db.query("SELECT id FROM users WHERE email=?", [email]);
+  const syntheticEmail = minecraftUuid ? playerOnlyProfileEmail(minecraftUuid) : null;
   if (existingRows[0]) {
+    if (syntheticEmail && syntheticEmail !== email) await db.query("DELETE FROM users WHERE email=?", [syntheticEmail]);
     await db.query("UPDATE users SET username=?,name=?,image=?,minecraft_uuid=COALESCE(?,minecraft_uuid),updated_at=NOW(3) WHERE email=?", [username, name, image, minecraftUuid, email]);
+  } else if (syntheticEmail) {
+    const [syntheticRows] = await db.query("SELECT id FROM users WHERE email=? LIMIT 1", [syntheticEmail]);
+    if (syntheticRows[0]) {
+      await db.query("UPDATE users SET email=?,username=?,name=?,image=?,updated_at=NOW(3) WHERE id=?", [email, username, name, image, syntheticRows[0].id]);
+    } else {
+      await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image, minecraftUuid]);
+    }
   } else {
     await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image, minecraftUuid]);
   }

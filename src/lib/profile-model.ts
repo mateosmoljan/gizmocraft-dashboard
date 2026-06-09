@@ -2,6 +2,7 @@ export type EditableProfileInput = {
   username?: unknown;
   name?: unknown;
   image?: unknown;
+  minecraftUsername?: unknown;
 };
 
 export function normalizeEmail(value: string) {
@@ -46,14 +47,27 @@ export function usernameFromEmail(email: string) {
   return normalizeUsername(email.split("@")[0] ?? "player") || "player";
 }
 
+export function normalizeMinecraftUsername(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const cleaned = value.trim();
+  if (!/^[A-Za-z0-9_]{1,16}$/.test(cleaned)) return undefined;
+  return cleaned;
+}
+
+export function playerOnlyProfileEmail(minecraftUuid: string) {
+  return `minecraft:${minecraftUuid.trim().toLowerCase()}@gizmocraft.local`;
+}
+
 export function profileUpdateFromInput(input: EditableProfileInput) {
   const usernameSource = cleanString(input.username, 64);
   const username = usernameSource ? normalizeUsername(usernameSource) : undefined;
   const name = cleanString(input.name, 80);
   const image = cleanProfileImageUrl(input.image);
+  const minecraftUsername = normalizeMinecraftUsername(input.minecraftUsername);
   return {
     ...(username ? { username } : {}),
     ...(name ? { name } : {}),
     image: image ?? null,
+    ...(minecraftUsername ? { minecraftUsername } : {}),
   };
 }

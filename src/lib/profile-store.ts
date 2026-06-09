@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { bridgeRequestInit } from "@/lib/dashboard-data";
 import { knownPlayerProfiles, knownProfileForEmail, knownPublicProfiles } from "@/lib/known-profiles";
-import { normalizeEmail, usernameFromEmail } from "@/lib/profile-model";
+import { normalizeEmail, normalizeMinecraftUsername, usernameFromEmail } from "@/lib/profile-model";
 import { notifyNewUserSignup } from "@/lib/signup-notifications";
 
 const PROFILE_DB_TIMEOUT_MS = 900;
-type ProfileUpdate = { username?: string; name?: string; image?: string | null };
+type ProfileUpdate = { username?: string; name?: string; image?: string | null; minecraftUsername?: string; minecraftUuid?: string };
 export type AppUserStats = { online: number; totalSignedIn: number; live: boolean };
 const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -186,6 +186,20 @@ export async function findPlayerUuidForEmail(email: string) {
   }
 }
 
+export async function findPlayerUuidForMinecraftUsername(minecraftUsername?: string | null) {
+  const normalizedName = normalizeMinecraftUsername(minecraftUsername);
+  if (!normalizedName) return null;
+  try {
+    const player = await prisma.player.findFirst({
+      where: { name: { equals: normalizedName } },
+      select: { uuid: true },
+    });
+    return player?.uuid ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getOrCreateUserProfile(input: { email: string; name?: string | null; image?: string | null; emailVerified?: Date | null }) {
   const email = normalizeEmail(input.email);
   const existing = await prisma.user.findUnique({ where: { email }, include: { player: true } });
@@ -265,9 +279,10 @@ export async function getOrFallbackUserProfile(input: { email: string; name?: st
 
 export async function updateUserProfile(userId: string, input: ProfileUpdate) {
   const username = input.username ? await uniqueUsername(input.username, userId) : undefined;
+  const { minecraftUsername: _minecraftUsername, ...data } = input;
   return prisma.user.update({
     where: { id: userId },
-    data: { ...input, ...(username ? { username } : {}) },
+    data: { ...data, ...(username ? { username } : {}) },
     include: { player: true },
   });
 }
@@ -283,7 +298,13 @@ export async function updateUserProfileForEmail(email: string, input: ProfileUpd
 
   try {
     const profile = await withProfileDbTimeout(getOrCreateUserProfile({ email: normalizedEmail, image: googleImage }));
-    return await withProfileDbTimeout(updateUserProfile(profile.id, { ...input, image }));
+    const minecraftUuid = input.minecraftUsername ? await findPlayerUuidForMinecraftUsername(input.minecraftUsername) : null;
+    if (minecraftUuid) {
+      await withProfileDbTimeout(prisma.user.deleteMany({
+        where: { email: `minecraft:${minecraftUuid.toLowerCase()}@gizmocraft.local`, NOT: { id: profile.id } },
+      }));
+    }
+    return await withProfileDbTimeout(updateUserProfile(profile.id, { ...input, image, ...(minecraftUuid ? { minecraftUuid } : {}) }));
   } catch (dbError) {
     console.warn("Profile database update unavailable; returning fallback profile", dbError);
     const fallback = fallbackUserProfile({ email: normalizedEmail, image: googleImage });

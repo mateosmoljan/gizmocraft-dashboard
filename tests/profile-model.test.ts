@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { normalizeEmail, normalizeUsername, profileUpdateFromInput } from "../src/lib/profile-model";
+import { normalizeEmail, normalizeMinecraftUsername, normalizeUsername, playerOnlyProfileEmail, profileUpdateFromInput } from "../src/lib/profile-model";
 
 describe("profile model helpers", () => {
   it("normalizes email addresses for stable player linking", () => {
@@ -22,5 +22,15 @@ describe("profile model helpers", () => {
   it("accepts compressed imported profile images as data URLs", () => {
     const image = "data:image/jpeg;base64," + Buffer.from("small avatar").toString("base64");
     assert.equal(profileUpdateFromInput({ image }).image, image);
+  });
+
+  it("normalizes Minecraft account names separately from public profile slugs", () => {
+    assert.equal(normalizeMinecraftUsername("  Gizmeta_123  "), "Gizmeta_123");
+    assert.equal(normalizeMinecraftUsername("bad name!"), undefined);
+    assert.equal(profileUpdateFromInput({ minecraftUsername: "  Gizmeta_123  " }).minecraftUsername, "Gizmeta_123");
+  });
+
+  it("creates stable synthetic emails for Minecraft-first player profiles", () => {
+    assert.equal(playerOnlyProfileEmail("ABC-123"), "minecraft:abc-123@gizmocraft.local");
   });
 });

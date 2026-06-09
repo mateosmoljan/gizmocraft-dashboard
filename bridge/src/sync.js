@@ -18,6 +18,36 @@ function foodEaten(raw) {
   const foodNames = ["apple", "baked_potato", "beef", "beetroot", "beetroot_soup", "bread", "carrot", "chicken", "chorus_fruit", "cod", "cooked_beef", "cooked_chicken", "cooked_cod", "cooked_mutton", "cooked_porkchop", "cooked_rabbit", "cooked_salmon", "cookie", "dried_kelp", "enchanted_golden_apple", "golden_apple", "golden_carrot", "honey_bottle", "melon_slice", "mushroom_stew", "mutton", "poisonous_potato", "porkchop", "potato", "pufferfish", "pumpkin_pie", "rabbit", "rabbit_stew", "rotten_flesh", "salmon", "spider_eye", "suspicious_stew", "sweet_berries", "glow_berries", "tropical_fish"];
   return foodNames.reduce((sum, item) => sum + Number(used[`minecraft:${item}`] ?? 0), 0);
 }
+function normalizeUsername(value) {
+  const username = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  return username || "player";
+}
+function playerOnlyProfileEmail(uuid) { return `minecraft:${String(uuid ?? "").trim().toLowerCase()}@gizmocraft.local`; }
+
+async function ensurePlayerOnlyUser(db, player) {
+  const [linkedRows] = await db.execute("SELECT id FROM users WHERE minecraft_uuid=? LIMIT 1", [player.uuid]);
+  if (linkedRows[0]) return false;
+  const email = playerOnlyProfileEmail(player.uuid);
+  const candidates = [normalizeUsername(player.name), normalizeUsername(`${player.name}-${String(player.uuid).slice(0, 8)}`)];
+  for (const username of candidates) {
+    try {
+      await db.execute(
+        `INSERT INTO users (id,email,username,name,minecraft_uuid,role,created_at,updated_at)
+         VALUES (UUID(),?,?,?,?, 'PLAYER',NOW(3),NOW(3))`,
+        [email, username, player.name, player.uuid],
+      );
+      return true;
+    } catch (error) {
+      if (!String(error?.message ?? error).includes("Duplicate")) throw error;
+    }
+  }
+  return false;
+}
 
 function asDate(value) {
   const date = value instanceof Date ? value : new Date(value);
@@ -228,6 +258,7 @@ export async function syncMinecraftStats() {
       };
       const [previousRows] = await db.execute("SELECT play_ticks,captured_at FROM player_stat_snapshots WHERE player_uuid=? ORDER BY captured_at DESC LIMIT 1", [row.uuid]);
       await db.execute("INSERT INTO players (uuid,name,first_seen_at,last_seen_at,total_play_ms) VALUES (?,?,NOW(),NOW(),?) ON DUPLICATE KEY UPDATE name=VALUES(name), last_seen_at=NOW(), total_play_ms=VALUES(total_play_ms)", [row.uuid, row.name, row.playTicks * 50]);
+      await ensurePlayerOnlyUser(db, row);
       await db.execute("INSERT INTO player_stat_snapshots (player_uuid,deaths,mobs_killed,blocks_mined,blocks_placed,items_crafted,diamonds_mined,distance_cm,play_ticks,raw_stats) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON))", [row.uuid,row.deaths,row.mobsKilled,row.blocksMined,row.blocksPlaced,row.itemsCrafted,row.diamondsMined,row.distanceCm,row.playTicks,JSON.stringify(row.raw)]);
       await recordInferredPlayerSession(db, row.uuid, row.playTicks, previousRows[0] ?? null, new Date());
       players.push(row);

@@ -13,7 +13,7 @@ type Profile = {
 };
 
 export function ProfileSettings({ profile }: { profile: Profile }) {
-  const [form, setForm] = useState({ username: profile.username, name: profile.name ?? "", image: profile.image ?? "" });
+  const [form, setForm] = useState({ username: profile.username, name: profile.name ?? "", image: profile.image ?? "", minecraftUsername: profile.player?.name ?? "" });
   const [status, setStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -68,8 +68,8 @@ export function ProfileSettings({ profile }: { profile: Profile }) {
       return;
     }
     const data = await res.json();
-    if (data.profile) setForm({ username: data.profile.username, name: data.profile.name ?? "", image: data.profile.image ?? "" });
-    setStatus("Saved — this image now follows your attached GizmoCraft profile.");
+    if (data.profile) setForm({ username: data.profile.username, name: data.profile.name ?? "", image: data.profile.image ?? "", minecraftUsername: data.profile.player?.name ?? form.minecraftUsername ?? "" });
+    setStatus("Saved — this profile now links to your Minecraft player when the username matches world data.");
   }
 
   return (
@@ -117,6 +117,11 @@ export function ProfileSettings({ profile }: { profile: Profile }) {
         <div className="mt-6 grid gap-4">
           <label className="grid gap-2 text-sm text-slate-300">Username<input className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></label>
           <label className="grid gap-2 text-sm text-slate-300">Display name<input className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+          <label className="grid gap-2 text-sm text-slate-300">
+            Minecraft username
+            <input className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white" placeholder="Exact in-game name, e.g. Gizmeta" value={form.minecraftUsername} onChange={(e) => setForm({ ...form, minecraftUsername: e.target.value })} />
+            <span className="text-xs text-slate-500">If this matches a player from the world data, GizmoCraft links that Minecraft playtime/stats to this Google profile.</span>
+          </label>
           <label className="grid gap-2 text-sm text-slate-300">
             Profile image URL
             <input className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white" placeholder="https://..." value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} />
