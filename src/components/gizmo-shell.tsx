@@ -12,7 +12,7 @@ const icons = [BarChart3, UserRound, Trophy, ClipboardList, Activity, Users, Set
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
 const APP_STATS_CACHE_KEY = "gizmocraft:last-app-stats";
 
-export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecraft command center" }: { children: React.ReactNode; title?: string; subtitle?: string }) {
+export function GizmoShell({ children }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [appStats, setAppStats] = useState<AppStats>({ online: 1, totalSignedIn: 1, live: false });
@@ -99,10 +99,6 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
         </aside>
 
         <main className="min-w-0 flex-1 px-5 py-6 md:px-8 lg:px-10">
-          <header className="mb-6 rounded-3xl border border-white/10 bg-white/8 p-5 backdrop-blur">
-            <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">{title}</p>
-            <p className="mt-1 text-sm text-slate-300">{subtitle}</p>
-          </header>
           {children}
         </main>
       </div>
