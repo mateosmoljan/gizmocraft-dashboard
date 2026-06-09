@@ -2,7 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { gunzip } from "node:zlib";
 import { promisify } from "node:util";
-import { pool } from "./mysql.js";
+
 
 const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-servers/gizmo-ivan";
 const worldName = process.env.MINECRAFT_WORLD_NAME ?? "gizmo-ivan-dole";
@@ -175,6 +175,7 @@ async function recordInferredPlayerSession(db, playerUuid, currentPlayTicks, pre
 }
 
 export async function syncMinecraftStats() {
+  const { pool } = await import("./mysql.js");
   const db = await pool();
   const started = new Date();
   const [run] = await db.execute("INSERT INTO sync_runs (source,status) VALUES (?,?)", [worldPath, "running"]);
