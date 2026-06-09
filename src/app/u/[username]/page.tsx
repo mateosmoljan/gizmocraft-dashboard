@@ -54,8 +54,8 @@ export default async function PublicUserProfile({ params }: { params: Promise<{ 
             <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.25em] text-emerald-100/80">Session logs</p>
-                  <h2 className="mt-1 text-2xl font-black">Recent joins and leaves</h2>
+                  <p className="text-sm uppercase tracking-[0.25em] text-emerald-100/80">Minecraft world sessions</p>
+                  <h2 className="mt-1 text-2xl font-black">Recent join and leave times</h2>
                 </div>
                 <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-300">{sessions.length} shown</span>
               </div>
@@ -73,7 +73,7 @@ export default async function PublicUserProfile({ params }: { params: Promise<{ 
                   ))}
                 </div>
               ) : (
-                <p className="mt-4 rounded-2xl bg-white/8 p-4 text-sm text-slate-300">No session logs recorded for this profile yet.</p>
+                <p className="mt-4 rounded-2xl bg-white/8 p-4 text-sm text-slate-300">No Minecraft world sessions recorded for this profile yet.</p>
               )}
             </div>
           </div>

@@ -85,7 +85,7 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
                 <p className="text-xs text-slate-400">signed in total</p>
               </div>
             </div>
-            <p className="mt-3 text-[11px] text-slate-500">{appStats && !appStats.live ? "Showing your signed-in session; bridge stats pending." : "App activity only, not Minecraft players."}</p>
+            <p className="mt-3 text-[11px] text-slate-500">{appStats && !appStats.live ? "Showing this signed-in app user; bridge stats pending." : "App activity only, not Minecraft players."}</p>
           </div>
         </aside>
 
