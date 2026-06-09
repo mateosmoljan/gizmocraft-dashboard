@@ -85,6 +85,30 @@ function toSession(joined, leftAt) {
   };
 }
 
+async function upsertPlayerSession(db, playerUuid, joinedAt, leftAt, durationMs) {
+  const [overlappingRows] = await db.execute(
+    `SELECT id FROM player_sessions
+     WHERE player_uuid=? AND joined_at <= ? AND COALESCE(left_at, joined_at) >= ?
+     ORDER BY joined_at ASC, id ASC`,
+    [playerUuid, leftAt, joinedAt],
+  );
+  const keep = overlappingRows[0];
+  if (keep) {
+    await db.execute(
+      "UPDATE player_sessions SET joined_at=?, left_at=?, duration_ms=? WHERE id=?",
+      [joinedAt, leftAt, durationMs, keep.id],
+    );
+    const duplicateIds = overlappingRows.slice(1).map((row) => row.id);
+    if (duplicateIds.length) {
+      await db.execute(`DELETE FROM player_sessions WHERE id IN (${duplicateIds.map(() => "?").join(",")})`, duplicateIds);
+    }
+    return false;
+  }
+
+  await db.execute("INSERT INTO player_sessions (player_uuid,joined_at,left_at,duration_ms) VALUES (?,?,?,?)", [playerUuid, joinedAt, leftAt, durationMs]);
+  return true;
+}
+
 function logBaseDate(fileName, mtime) {
   const namedDate = path.basename(fileName).match(/^(\d{4})-(\d{2})-(\d{2})/);
   const source = namedDate ? `${namedDate[1]}-${namedDate[2]}-${namedDate[3]}T00:00:00Z` : mtime;
@@ -123,16 +147,8 @@ async function syncServerLogSessions(db) {
   for (const session of sessions) {
     const playerUuid = uuidByName.get(session.playerName.toLowerCase());
     if (!playerUuid) continue;
-    const [existingRows] = await db.execute(
-      "SELECT id FROM player_sessions WHERE player_uuid=? AND ABS(TIMESTAMPDIFF(SECOND, joined_at, ?)) <= 1 LIMIT 1",
-      [playerUuid, session.joinedAt],
-    );
-    if (existingRows[0]) continue;
-    await db.execute(
-      "INSERT INTO player_sessions (player_uuid,joined_at,left_at,duration_ms) VALUES (?,?,?,?)",
-      [playerUuid, session.joinedAt, session.leftAt, session.durationMs],
-    );
-    inserted += 1;
+    const didInsert = await upsertPlayerSession(db, playerUuid, session.joinedAt, session.leftAt, session.durationMs);
+    if (didInsert) inserted += 1;
   }
 
   return { inserted, files: files.length };
@@ -171,7 +187,7 @@ async function recordInferredPlayerSession(db, playerUuid, currentPlayTicks, pre
     return;
   }
 
-  await db.execute("INSERT INTO player_sessions (player_uuid,joined_at,left_at,duration_ms) VALUES (?,?,?,?)", [playerUuid, joinedAt, captured, durationMs]);
+  await upsertPlayerSession(db, playerUuid, joinedAt, captured, durationMs);
 }
 
 export async function syncMinecraftStats() {
