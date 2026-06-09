@@ -39,7 +39,7 @@ function metric(label: string, value: unknown, detail?: unknown, percent?: unkno
 }
 
 export async function getServerUsage(): Promise<ServerUsageData> {
-  const bridgeUrl = process.env.MINECRAFT_BRIDGE_URL ?? "http://gizmo-server:3020";
+  const bridgeUrl = process.env.MINECRAFT_BRIDGE_URL || "http://gizmo-server:3020";
   try {
     const res = await fetch(`${bridgeUrl}/api/usage`, {
       ...bridgeRequestInit(),
@@ -71,6 +71,7 @@ export async function getServerUsage(): Promise<ServerUsageData> {
         metric("RAM", memory.used ?? memory.usedHuman, memory.total ? `${memory.total} total` : memory.detail, memory.usedPercent ?? memory.percent),
         metric("Minecraft RAM", minecraft.memory?.used ?? minecraft.memoryUsed, minecraft.memory?.limit ? `${minecraft.memory.limit} limit` : minecraft.memoryDetail, minecraft.memory?.percent ?? minecraft.memoryPercent),
         metric("Disk", disk.used ?? disk.usedHuman, disk.total ? `${disk.total} total` : disk.detail, disk.usedPercent ?? disk.percent),
+        metric("Wi‑Fi", network.wifi?.ssid ?? network.ssid ?? (network.wifi?.connected === false ? "Not connected" : network.summary), network.detail ?? network.interface),
         metric("Network", network.summary ?? network.latency ?? "Unavailable", network.detail),
         metric("Players", minecraft.playersOnline != null && minecraft.maxPlayers != null ? `${minecraft.playersOnline}/${minecraft.maxPlayers}` : minecraft.playersOnline, minecraft.status),
       ],

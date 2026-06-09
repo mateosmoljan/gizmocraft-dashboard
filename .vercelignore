@@ -3,8 +3,9 @@
 node_modules
 .env
 .env.*
-bridge/node_modules
-bridge/.env
+*.log
 logs
-uploads
 .runtime
+uploads
+coverage
+.DS_Store

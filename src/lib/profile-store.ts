@@ -103,11 +103,11 @@ async function withDatabasePlayerActivity(profile: any) {
   };
 }
 
-async function bridgeTouchAppActivity(email: string) {
+async function bridgeTouchAppActivity(input: { email: string; name?: string | null; username?: string | null }) {
   const data = await bridgeJson<{ stats: AppUserStats }>("/api/app-activity", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: normalizeEmail(email) }),
+    body: JSON.stringify({ email: normalizeEmail(input.email), name: input.name ?? null, username: input.username ?? null }),
   });
   return { ...data.stats, live: true };
 }
@@ -123,15 +123,16 @@ async function databaseTouchAppActivity(email: string) {
   return { online, totalSignedIn, live: true };
 }
 
-export async function touchAndReadAppUserStats(email: string): Promise<AppUserStats> {
+export async function touchAndReadAppUserStats(input: string | { email: string; name?: string | null; username?: string | null }): Promise<AppUserStats> {
+  const payload = typeof input === "string" ? { email: input } : input;
   try {
-    return await bridgeTouchAppActivity(email);
+    return await bridgeTouchAppActivity(payload);
   } catch (bridgeError) {
     console.warn("App stats bridge unavailable; trying direct profile database", bridgeError);
   }
 
   try {
-    return await databaseTouchAppActivity(email);
+    return await databaseTouchAppActivity(payload.email);
   } catch (dbError) {
     console.warn("App stats database unavailable", dbError);
     return { online: 1, totalSignedIn: 1, live: false };

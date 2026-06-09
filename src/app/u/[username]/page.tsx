@@ -101,7 +101,9 @@ function playerPlaytime(player: unknown, latest: unknown) {
   const fromPlayer = bigintLikeValue(player, "totalPlayMs");
   if (fromPlayer > 0) return fromPlayer;
   const playTicks = bigintLikeValue(latest, "playTicks");
-  return playTicks > 0 ? playTicks * 50 : 0;
+  if (playTicks > 0) return playTicks * 50;
+  const playHours = bigintLikeValue(latest, "playHours");
+  return playHours > 0 ? playHours * 60 * 60 * 1000 : 0;
 }
 
 function playerSessions(player: unknown) {

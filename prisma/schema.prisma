@@ -30,6 +30,7 @@ model User {
 
   accounts       Account[]
   sessions       Session[]
+  events         AppEvent[]
   player         Player?   @relation(fields: [minecraftUuid], references: [uuid], onDelete: SetNull)
 
   @@index([minecraftUuid])
@@ -92,6 +93,21 @@ model PlayerEmail {
 
   @@index([playerUuid])
   @@map("player_emails")
+}
+
+model AppEvent {
+  id         BigInt   @id @default(autoincrement())
+  userEmail  String   @map("user_email")
+  eventType  String   @map("event_type")
+  path       String?
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  raw        Json?
+
+  user User @relation(fields: [userEmail], references: [email], onDelete: Cascade)
+
+  @@index([userEmail, occurredAt])
+  @@index([eventType, occurredAt])
+  @@map("app_events")
 }
 
 model Player {

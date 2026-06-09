@@ -8,6 +8,10 @@ export async function GET() {
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const stats = await touchAndReadAppUserStats(email);
+  const stats = await touchAndReadAppUserStats({
+    email,
+    name: session.user?.name ?? null,
+    username: (session.user as any)?.username ?? null,
+  });
   return NextResponse.json({ stats }, { headers: { "cache-control": "no-store" } });
 }

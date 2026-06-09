@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Activity, BarChart3, Settings, Users } from "lucide-react";
-import { MinecraftLoading } from "@/components/minecraft-loading";
+import { Activity, BarChart3, ClipboardList, Settings, Trophy, UserRound, Users } from "lucide-react";
 import { gizmoNavItems } from "@/lib/navigation";
 
-const icons = [BarChart3, Activity, Users, Settings];
+const icons = [BarChart3, UserRound, Trophy, ClipboardList, Activity, Users, Settings];
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
 
 export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecraft command center" }: { children: React.ReactNode; title?: string; subtitle?: string }) {
@@ -95,7 +94,7 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
             <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">{title}</p>
             <p className="mt-1 text-sm text-slate-300">{subtitle}</p>
           </header>
-          {pending ? <MinecraftLoading compact /> : children}
+          {children}
         </main>
       </div>
     </div>

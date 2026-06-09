@@ -1,10 +1,13 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { gunzip } from "node:zlib";
+import { promisify } from "node:util";
 import { pool } from "./mysql.js";
 
 const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-servers/gizmo-ivan";
 const worldName = process.env.MINECRAFT_WORLD_NAME ?? "gizmo-ivan-dole";
 const worldPath = path.join(serverRoot, worldName);
+const gunzipAsync = promisify(gunzip);
 
 function n(obj, key) { return Number(obj?.stats?.["minecraft:custom"]?.[key] ?? 0); }
 function mined(raw, block) { return Number(raw?.stats?.["minecraft:mined"]?.[block] ?? 0); }
@@ -14,6 +17,161 @@ function foodEaten(raw) {
   const used = raw?.stats?.["minecraft:used"] ?? {};
   const foodNames = ["apple", "baked_potato", "beef", "beetroot", "beetroot_soup", "bread", "carrot", "chicken", "chorus_fruit", "cod", "cooked_beef", "cooked_chicken", "cooked_cod", "cooked_mutton", "cooked_porkchop", "cooked_rabbit", "cooked_salmon", "cookie", "dried_kelp", "enchanted_golden_apple", "golden_apple", "golden_carrot", "honey_bottle", "melon_slice", "mushroom_stew", "mutton", "poisonous_potato", "porkchop", "potato", "pufferfish", "pumpkin_pie", "rabbit", "rabbit_stew", "rotten_flesh", "salmon", "spider_eye", "suspicious_stew", "sweet_berries", "glow_berries", "tropical_fish"];
   return foodNames.reduce((sum, item) => sum + Number(used[`minecraft:${item}`] ?? 0), 0);
+}
+
+function asDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+export function parseMinecraftSessionEvents(text, baseDate) {
+  const base = asDate(baseDate);
+  let dayOffset = 0;
+  let previousSecondOfDay = -1;
+  const events = [];
+
+  for (const line of String(text ?? "").split("\n")) {
+    const match = line.match(/^\[(\d{2}):(\d{2}):(\d{2})\].*?: ([A-Za-z0-9_]{1,16}) (joined|left) the game\b/);
+    if (!match) continue;
+    const [, hour, minute, second, playerName, action] = match;
+    const secondOfDay = Number(hour) * 3600 + Number(minute) * 60 + Number(second);
+    if (previousSecondOfDay >= 0 && secondOfDay < previousSecondOfDay) dayOffset += 1;
+    previousSecondOfDay = secondOfDay;
+    const occurredAt = new Date(Date.UTC(
+      base.getUTCFullYear(),
+      base.getUTCMonth(),
+      base.getUTCDate() + dayOffset,
+      Number(hour),
+      Number(minute),
+      Number(second),
+    ));
+    events.push({ playerName, action, occurredAt });
+  }
+
+  return events;
+}
+
+export function pairMinecraftSessionEvents(events) {
+  const open = new Map();
+  const sessions = [];
+  const sorted = [...events].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+
+  for (const event of sorted) {
+    const key = event.playerName.toLowerCase();
+    if (event.action === "joined") {
+      const previousJoin = open.get(key);
+      if (previousJoin && event.occurredAt > previousJoin.occurredAt) {
+        sessions.push(toSession(previousJoin, event.occurredAt));
+      }
+      open.set(key, event);
+      continue;
+    }
+
+    const joined = open.get(key);
+    if (!joined || event.occurredAt <= joined.occurredAt) continue;
+    sessions.push(toSession(joined, event.occurredAt));
+    open.delete(key);
+  }
+
+  return sessions;
+}
+
+function toSession(joined, leftAt) {
+  return {
+    playerName: joined.playerName,
+    joinedAt: joined.occurredAt,
+    leftAt,
+    durationMs: leftAt.getTime() - joined.occurredAt.getTime(),
+  };
+}
+
+function logBaseDate(fileName, mtime) {
+  const namedDate = path.basename(fileName).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const source = namedDate ? `${namedDate[1]}-${namedDate[2]}-${namedDate[3]}T00:00:00Z` : mtime;
+  return asDate(source);
+}
+
+async function readLogText(file) {
+  const buffer = await readFile(file);
+  return file.endsWith(".gz") ? String(await gunzipAsync(buffer)) : String(buffer);
+}
+
+async function syncServerLogSessions(db) {
+  const logsDir = path.join(serverRoot, "logs");
+  let files = [];
+  try {
+    files = (await readdir(logsDir)).filter((file) => file.endsWith(".log") || file.endsWith(".log.gz"));
+  } catch {
+    return { inserted: 0, files: 0 };
+  }
+
+  const events = [];
+  for (const file of files.sort()) {
+    const fullPath = path.join(logsDir, file);
+    const info = await stat(fullPath).catch(() => null);
+    const text = await readLogText(fullPath).catch(() => "");
+    events.push(...parseMinecraftSessionEvents(text, logBaseDate(file, info?.mtime ?? new Date())));
+  }
+
+  const sessions = pairMinecraftSessionEvents(events);
+  if (!sessions.length) return { inserted: 0, files: files.length };
+
+  const [playerRows] = await db.execute("SELECT uuid,name FROM players");
+  const uuidByName = new Map(playerRows.map((row) => [String(row.name).toLowerCase(), row.uuid]));
+  let inserted = 0;
+
+  for (const session of sessions) {
+    const playerUuid = uuidByName.get(session.playerName.toLowerCase());
+    if (!playerUuid) continue;
+    const [existingRows] = await db.execute(
+      "SELECT id FROM player_sessions WHERE player_uuid=? AND ABS(TIMESTAMPDIFF(SECOND, joined_at, ?)) <= 1 LIMIT 1",
+      [playerUuid, session.joinedAt],
+    );
+    if (existingRows[0]) continue;
+    await db.execute(
+      "INSERT INTO player_sessions (player_uuid,joined_at,left_at,duration_ms) VALUES (?,?,?,?)",
+      [playerUuid, session.joinedAt, session.leftAt, session.durationMs],
+    );
+    inserted += 1;
+  }
+
+  return { inserted, files: files.length };
+}
+
+async function recordInferredPlayerSession(db, playerUuid, currentPlayTicks, previousSnapshot, capturedAt) {
+  const currentTicks = Number(currentPlayTicks ?? 0);
+  if (currentTicks <= 0) return;
+
+  const [sessionRows] = await db.execute("SELECT id,left_at,duration_ms FROM player_sessions WHERE player_uuid=? ORDER BY joined_at DESC LIMIT 1", [playerUuid]);
+  const latestSession = sessionRows[0];
+  const captured = asDate(capturedAt);
+
+  if (!previousSnapshot) {
+    // A first snapshot's total play_time is historical lifetime playtime, not a
+    // real join/leave window ending at the sync time. Server logs are imported
+    // separately when available; without a previous snapshot, do not invent a
+    // recent completed session.
+    return;
+  }
+
+  const previousTicks = Number(previousSnapshot.play_ticks ?? 0);
+  const deltaTicks = currentTicks - previousTicks;
+  if (deltaTicks <= 0) return;
+
+  const durationMs = deltaTicks * 50;
+  const previousCapturedAt = asDate(previousSnapshot.captured_at);
+  const joinedAt = new Date(Math.max(previousCapturedAt.getTime(), captured.getTime() - durationMs));
+  const previousWindowStart = new Date(previousCapturedAt.getTime() - 10 * 60 * 1000);
+
+  if (latestSession?.left_at && asDate(latestSession.left_at) >= previousWindowStart) {
+    await db.execute(
+      "UPDATE player_sessions SET left_at=?, duration_ms=COALESCE(duration_ms,0)+? WHERE id=?",
+      [captured, durationMs, latestSession.id],
+    );
+    return;
+  }
+
+  await db.execute("INSERT INTO player_sessions (player_uuid,joined_at,left_at,duration_ms) VALUES (?,?,?,?)", [playerUuid, joinedAt, captured, durationMs]);
 }
 
 export async function syncMinecraftStats() {
@@ -47,11 +205,14 @@ export async function syncMinecraftStats() {
         playTicks: n(raw, "minecraft:play_time"),
         raw
       };
-      await db.execute("INSERT INTO players (uuid,name,first_seen_at,last_seen_at) VALUES (?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name), last_seen_at=NOW()", [row.uuid, row.name]);
+      const [previousRows] = await db.execute("SELECT play_ticks,captured_at FROM player_stat_snapshots WHERE player_uuid=? ORDER BY captured_at DESC LIMIT 1", [row.uuid]);
+      await db.execute("INSERT INTO players (uuid,name,first_seen_at,last_seen_at,total_play_ms) VALUES (?,?,NOW(),NOW(),?) ON DUPLICATE KEY UPDATE name=VALUES(name), last_seen_at=NOW(), total_play_ms=VALUES(total_play_ms)", [row.uuid, row.name, row.playTicks * 50]);
       await db.execute("INSERT INTO player_stat_snapshots (player_uuid,deaths,mobs_killed,blocks_mined,blocks_placed,items_crafted,diamonds_mined,distance_cm,play_ticks,raw_stats) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON))", [row.uuid,row.deaths,row.mobsKilled,row.blocksMined,row.blocksPlaced,row.itemsCrafted,row.diamondsMined,row.distanceCm,row.playTicks,JSON.stringify(row.raw)]);
+      await recordInferredPlayerSession(db, row.uuid, row.playTicks, previousRows[0] ?? null, new Date());
       players.push(row);
     }
-    await db.execute("UPDATE sync_runs SET status='ok', finished_at=NOW(), details=CAST(? AS JSON) WHERE id=?", [JSON.stringify({ players: players.length, startedAt: started.toISOString() }), runId]);
+    const logSessions = await syncServerLogSessions(db);
+    await db.execute("UPDATE sync_runs SET status='ok', finished_at=NOW(), details=CAST(? AS JSON) WHERE id=?", [JSON.stringify({ players: players.length, startedAt: started.toISOString(), logSessions }), runId]);
     await db.end();
     return { status: "ok", source: worldPath, players: players.map(({raw, ...p})=>p) };
   } catch (err) {

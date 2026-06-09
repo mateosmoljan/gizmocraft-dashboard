@@ -6,9 +6,9 @@ import { authOptions } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function LeaderboardsPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) redirect("/signing");
 
-  return <GizmoShell title="Minecraft Dashboard" subtitle="Live player profiles, rivalry boards, and world telemetry."><MinecraftDashboard /></GizmoShell>;
+  return <GizmoShell title="Rivalry boards" subtitle="Leaderboards, shame boards, and podiums for the world."><MinecraftDashboard view="boards" /></GizmoShell>;
 }
