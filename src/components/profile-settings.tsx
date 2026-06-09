@@ -122,11 +122,7 @@ export function ProfileSettings({ profile }: { profile: Profile }) {
             <input className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white" placeholder="Exact in-game name, e.g. Gizmeta" value={form.minecraftUsername} onChange={(e) => setForm({ ...form, minecraftUsername: e.target.value })} />
             <span className="text-xs text-slate-500">If this matches a player from the world data, GizmoCraft links that Minecraft playtime/stats to this Google profile.</span>
           </label>
-          <label className="grid gap-2 text-sm text-slate-300">
-            Profile image URL
-            <input className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white" placeholder="https://..." value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} />
-            <span className="text-xs text-slate-500">Click the avatar to import from your PC or phone gallery, or paste an image URL. Leave empty to use your Google account image by default.</span>
-          </label>
+          <p className="text-xs text-slate-500">Click the avatar to import a profile image from your PC or phone gallery. The Use Google image button resets it back to your Google account image.</p>
           <button type="button" onClick={() => setForm({ ...form, image: "" })} className="w-fit rounded-full border border-white/10 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-white/10">Use Google image</button>
           <button type="button" onClick={save} className="w-fit rounded-full bg-emerald-300 px-5 py-3 font-black text-slate-950">Save profile</button>
           {status ? <p className="text-sm text-emerald-200">{status}</p> : null}
