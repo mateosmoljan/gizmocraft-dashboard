@@ -6,6 +6,7 @@ import { trackedSignals } from "@/lib/tracking";
 import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { formatPlaytimeHours } from "@/lib/playtime";
+import { DashboardProfileSummary } from "@/components/dashboard-profile-summary";
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
@@ -57,6 +58,7 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   return (
     <div className="space-y-6">
       <Hero worldStats={currentWorldStats} live={Boolean(data.live)} view={view} refreshing={refreshing} failed={failed} onRefresh={() => void refresh(true)} />
+      {view === "overview" ? <DashboardProfileSummary /> : null}
       {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data.live)} refreshing={refreshing} /> : null}
       {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data.live)} refreshing={refreshing} /> : null}
       {view === "boards" ? <BoardsSection players={currentPlayers} boards={currentBoards} refreshing={refreshing} /> : null}

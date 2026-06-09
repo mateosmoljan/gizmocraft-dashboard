@@ -8,6 +8,7 @@ type Profile = {
   name: string | null;
   image: string | null;
   email: string;
+  minecraftUuid?: string | null;
   player?: { name: string; uuid: string; totalPlayMs?: number | bigint | string | null } | null;
 };
 
@@ -104,6 +105,9 @@ export function ProfileSettings({ profile }: { profile: Profile }) {
         <p className="text-emerald-200">@{form.username}</p>
         <p className="mt-3 text-sm text-slate-400">Google email: {profile.email}</p>
         <p className="mt-3 text-sm text-slate-300">Minecraft: {profile.player?.name ?? "Not linked yet"}</p>
+        <p className={`mt-2 rounded-xl px-3 py-2 text-sm font-bold ${profile.minecraftUuid || profile.player?.uuid ? "bg-lime-300/10 text-lime-100" : "bg-amber-300/10 text-amber-100"}`}>
+          {profile.minecraftUuid || profile.player?.uuid ? "Ownership: this Google account is mapped to the linked Minecraft player." : "Ownership: no Minecraft player is attached to this Google account yet."}
+        </p>
         {profile.player ? <p className="mt-2 rounded-xl bg-emerald-300/10 px-3 py-2 text-sm font-bold text-emerald-100">Total playtime: {formatPlaytimeMs(profile.player.totalPlayMs)}</p> : null}
       </aside>
 
