@@ -83,6 +83,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       damageDealt: p.damageDealt ?? 0,
       damageTaken: p.damageTaken ?? 0,
       lastSeen: p.lastSeen ? formatZagrebDateTime(p.lastSeen) : "tracked",
+      online: Boolean(p.online),
     }));
     if (!players.length && isProductionBridgeConfigured()) throw new Error("bridge returned no players");
     return {

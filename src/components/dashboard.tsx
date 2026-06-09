@@ -166,7 +166,7 @@ function PlayerCard({ player: p, rank }: { player: DashboardPlayer; rank: number
     <article className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/12 to-white/5 p-5">
       <div className="flex items-center justify-between"><div className="text-4xl">{p.avatar}</div><span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">#{rank}</span></div>
       <h3 className="mt-4 text-2xl font-black">{p.name}</h3>
-      <p className="text-sm text-slate-400">Last seen: {p.lastSeen}</p>
+      <p className="text-sm text-slate-400">{p.online ? "Online now" : `Last seen: ${p.lastSeen}`}</p>
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
         <Stat label="Score" value={format(p.score)} />
         <Stat label="Deaths" value={String(p.deaths)} />
