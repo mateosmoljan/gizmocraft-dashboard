@@ -1,13 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { formatPlaytimeMs } from "@/lib/playtime";
 
 type Profile = {
   username: string;
   name: string | null;
   image: string | null;
   email: string;
-  player?: { name: string; uuid: string } | null;
+  player?: { name: string; uuid: string; totalPlayMs?: number | bigint | string | null } | null;
 };
 
 export function ProfileSettings({ profile }: { profile: Profile }) {
@@ -103,6 +104,7 @@ export function ProfileSettings({ profile }: { profile: Profile }) {
         <p className="text-emerald-200">@{form.username}</p>
         <p className="mt-3 text-sm text-slate-400">Google email: {profile.email}</p>
         <p className="mt-3 text-sm text-slate-300">Minecraft: {profile.player?.name ?? "Not linked yet"}</p>
+        {profile.player ? <p className="mt-2 rounded-xl bg-emerald-300/10 px-3 py-2 text-sm font-bold text-emerald-100">Total playtime: {formatPlaytimeMs(profile.player.totalPlayMs)}</p> : null}
       </aside>
 
       <section className="rounded-3xl border border-white/10 bg-white/8 p-5 backdrop-blur">

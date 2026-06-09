@@ -5,6 +5,7 @@ import { boards as fallbackBoards, players as fallbackPlayers, worldStats as fal
 import { trackedSignals } from "@/lib/tracking";
 import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
+import { formatPlaytimeHours } from "@/lib/playtime";
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
@@ -122,6 +123,7 @@ function OverviewSection({ players, worldStats, live, refreshing }: { players: D
             <Stat label="Score" value={!refreshing && top ? format(top.score) : null} />
             <Stat label="Diamonds" value={!refreshing && top ? String(top.diamonds) : null} />
             <Stat label="Mobs killed" value={!refreshing && top ? format(top.mobsKilled) : null} />
+            <Stat label="Total playtime" value={!refreshing && top ? formatPlaytimeHours(top.playHours) : null} />
           </div>
         </article>
         <article className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
@@ -167,8 +169,10 @@ function PlayerCard({ player: p, rank }: { player: DashboardPlayer; rank: number
       <div className="flex items-center justify-between"><div className="text-4xl">{p.avatar}</div><span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">#{rank}</span></div>
       <h3 className="mt-4 text-2xl font-black">{p.name}</h3>
       <p className="text-sm text-slate-400">{p.online ? "Online now" : `Last seen: ${p.lastSeen}`}</p>
+      <p className="mt-2 rounded-xl bg-emerald-300/10 px-3 py-2 text-sm font-bold text-emerald-100">Total playtime: {formatPlaytimeHours(p.playHours)}</p>
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
         <Stat label="Score" value={format(p.score)} />
+        <Stat label="Playtime" value={formatPlaytimeHours(p.playHours)} />
         <Stat label="Deaths" value={String(p.deaths)} />
         <Stat label="Mined" value={format(p.blocksMined)} />
         <Stat label="Diamonds" value={String(p.diamonds)} />
@@ -213,7 +217,7 @@ function BoardsSection({ players, boards, refreshing }: { players: DashboardPlay
                 )) : podium.map((p, index) => (
                   <div key={`${b.title}-${p.uuid}`} className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm">
                     <span className="font-bold text-slate-100">#{index + 1} {p.name}</span>
-                    <span className="text-slate-300">{formatBoardValue(Number(p[b.field]), b.suffix)}</span>
+                    <span className="text-right text-slate-300">{formatBoardValue(Number(p[b.field]), b.suffix)} · {formatPlaytimeHours(p.playHours)} played</span>
                   </div>
                 ))}
               </div>

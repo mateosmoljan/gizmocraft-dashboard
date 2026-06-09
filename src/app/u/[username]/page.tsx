@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { GizmoShell } from "@/components/gizmo-shell";
 import { authOptions } from "@/lib/auth";
 import { knownProfileForEmail } from "@/lib/known-profiles";
+import { formatPlaytimeMs } from "@/lib/playtime";
 import { publicProfileByUsername } from "@/lib/profile-store";
 import { formatZagrebDateTime } from "@/lib/time";
 
@@ -48,7 +49,7 @@ export default async function PublicUserProfile({ params }: { params: Promise<{ 
           <div className="mt-8 grid gap-4 md:grid-cols-[0.9fr_1.5fr]">
             <div className="rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-5">
               <p className="text-sm uppercase tracking-[0.25em] text-emerald-100/80">Minecraft playtime</p>
-              <p className="mt-3 text-4xl font-black text-white">{formatDuration(playtime)}</p>
+              <p className="mt-3 text-4xl font-black text-white">{formatPlaytimeMs(playtime)}</p>
               <p className="mt-2 text-sm text-slate-300">Total time played by this linked Minecraft player.</p>
             </div>
             <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
@@ -64,7 +65,7 @@ export default async function PublicUserProfile({ params }: { params: Promise<{ 
                   {sessions.map((entry) => (
                     <div key={entry.key} className="rounded-2xl bg-white/8 p-4 text-sm">
                       <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                        <p className="font-bold text-white">{formatDuration(entry.durationMs)}</p>
+                        <p className="font-bold text-white">{formatPlaytimeMs(entry.durationMs)}</p>
                         <p className="text-slate-300">{entry.leftAt ? "Completed" : "Online / open"}</p>
                       </div>
                       <p className="mt-2 text-slate-300">Joined: {formatZagrebDateTime(entry.joinedAt)}</p>
@@ -137,19 +138,6 @@ function dateValue(value: unknown) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatDuration(ms: number) {
-  if (!Number.isFinite(ms) || ms <= 0) return "0m";
-  const totalMinutes = Math.round(ms / 60_000);
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const minutes = totalMinutes % 60;
-  const parts = [];
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (!days && minutes) parts.push(`${minutes}m`);
-  return parts.join(" ") || "0m";
 }
 
 function Stat({ label, value }: { label: string; value: number }) {

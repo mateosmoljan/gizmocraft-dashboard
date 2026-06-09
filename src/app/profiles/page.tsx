@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { GizmoShell } from "@/components/gizmo-shell";
 import { authOptions } from "@/lib/auth";
 import { knownProfileForEmail } from "@/lib/known-profiles";
+import { formatPlaytimeHours, formatPlaytimeMs } from "@/lib/playtime";
 import { publicProfiles } from "@/lib/profile-store";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,7 @@ export default async function ProfilesPage() {
                 <h2 className="text-2xl font-black">{p.name ?? p.username}</h2>
                 <p className="text-emerald-200">@{p.username}</p>
                 <p className="mt-3 text-sm text-slate-300">Minecraft: {p.player?.name ?? "unlinked"}</p>
+                {p.player ? <p className="mt-2 rounded-xl bg-emerald-300/10 px-3 py-2 text-sm font-bold text-emerald-100">Total playtime: {profilePlaytime(p.player)}</p> : null}
               </a>
             ))}
           </div>
@@ -52,4 +54,16 @@ export default async function ProfilesPage() {
       </section>
     </GizmoShell>
   );
+}
+
+function profilePlaytime(player: unknown) {
+  if (!player || typeof player !== "object") return "0m";
+  const record = player as Record<string, unknown>;
+  const totalPlayMs = record.totalPlayMs;
+  if (totalPlayMs) return formatPlaytimeMs(totalPlayMs as number | bigint | string);
+  const stats = record.stats;
+  if (stats && typeof stats === "object") return formatPlaytimeHours(Number((stats as Record<string, unknown>).playHours ?? 0));
+  const snapshots = record.snapshots;
+  if (Array.isArray(snapshots) && snapshots[0] && typeof snapshots[0] === "object") return formatPlaytimeHours(Number((snapshots[0] as Record<string, unknown>).playHours ?? 0));
+  return "0m";
 }

@@ -313,7 +313,7 @@ export async function publicProfiles(limit = 100) {
     const profiles = await withProfileDbTimeout(prisma.user.findMany({
       take: limit,
       orderBy: [{ updatedAt: "desc" }],
-      select: { id: true, username: true, name: true, image: true, minecraftUuid: true, player: { select: { uuid: true, name: true, avatarUrl: true, lastSeenAt: true } } },
+      select: { id: true, username: true, name: true, image: true, minecraftUuid: true, player: { select: { uuid: true, name: true, avatarUrl: true, lastSeenAt: true, totalPlayMs: true, snapshots: { orderBy: { capturedAt: "desc" }, take: 1 } } } },
     }));
     const seen = new Set(profiles.flatMap((profile) => [profile.username, profile.minecraftUuid].filter(Boolean)));
     return [...profiles, ...known.filter((profile) => !seen.has(profile.username) && !seen.has(profile.minecraftUuid))].slice(0, limit);
