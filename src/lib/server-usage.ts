@@ -77,6 +77,10 @@ export async function getServerUsage(): Promise<ServerUsageData> {
       ],
     };
   } catch (error) {
-    return unavailableUsage(error instanceof Error ? error.message : "Usage endpoint unavailable.");
+    const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: unknown }).cause : null;
+    const code = cause && typeof cause === "object" && "code" in cause ? String((cause as { code?: unknown }).code) : null;
+    const host = cause && typeof cause === "object" && "host" in cause ? String((cause as { host?: unknown }).host) : null;
+    const detail = code && host ? `Vercel cannot reach the bridge at ${host} (${code}).` : error instanceof Error ? error.message : "Usage endpoint unavailable.";
+    return unavailableUsage(detail);
   }
 }
