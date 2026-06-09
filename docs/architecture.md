@@ -26,11 +26,14 @@ Do not expose raw MySQL publicly. Public means public dashboard and authenticate
 
 ## Data pipeline
 
-1. Collector on `gizmo-server` reads Minecraft JSON stats, advancements, usercache, logs/latest.log, and optional server health/TPS.
-2. Collector writes normalized rows into MySQL.
-3. Bridge exposes read APIs: `/health`, `/players`, `/players/:uuid`, `/leaderboards`, `/events`, `/world`.
-4. Vercel UI fetches bridge APIs with a server-side token.
-5. Players authenticate with Google and link to their Minecraft UUID/name. Known player email addresses can be preloaded into `player_emails`; when that Google email signs in, the app auto-attaches the account to the matching Minecraft UUID. Users can then edit their public username, display name, and profile picture from `/profile`.
+1. Bridge sync on `gizmo-server` reads the active world before dashboard reads: `usercache.json`, `gizmo-ivan-dole/players/stats/*.json`, and `logs/*.log*` join/leave events.
+2. Sync writes normalized player/stat/session rows into MySQL plus a `sync_runs` freshness record.
+3. Bridge exposes read APIs: `/health`, `/leaderboards`, `/profiles`, `/profiles/:username`, and usage/app/profile endpoints.
+4. Vercel UI fetches bridge APIs with a server-side token and no-store caching. `/api/public/leaderboards` triggers bridge sync before returning data.
+5. Production must not fall back to sample leaderboard data when `MINECRAFT_BRIDGE_URL` is configured; if the bridge is unavailable or unauthorized, the API returns `503` with `live: false` instead of wrong/stale sample stats.
+6. Players authenticate with Google and link to their Minecraft UUID/name. Known player email addresses can be preloaded into `player_emails`; when that Google email signs in, the app auto-attaches the account to the matching Minecraft UUID. Users can then edit their public username, display name, and profile picture from `/profile`.
+
+See `docs/minecraft-live-data-contract.md` for the full list of Minecraft world data and dashboard boards currently collected/fetched.
 
 ## Player profiles
 

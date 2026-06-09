@@ -3,6 +3,21 @@ import { formatZagrebDateTime } from "@/lib/time";
 
 export type DashboardPlayer = typeof fallbackPlayers[number];
 export type DashboardWorld = typeof fallbackWorldStats;
+export type DashboardData = {
+  players: DashboardPlayer[];
+  worldStats: DashboardWorld;
+  boards: typeof boards;
+  live: boolean;
+  error?: string;
+};
+
+function bridgeUrlFromEnv() {
+  return process.env.MINECRAFT_BRIDGE_URL?.trim() || "http://gizmo-server:3020";
+}
+
+function isProductionBridgeConfigured() {
+  return Boolean(process.env.MINECRAFT_BRIDGE_URL?.trim());
+}
 
 export function bridgeRequestInit(): RequestInit {
   const token = process.env.MINECRAFT_BRIDGE_TOKEN;
@@ -13,19 +28,41 @@ export function bridgeRequestInit(): RequestInit {
 }
 
 async function syncBridgeStats(bridgeUrl: string) {
-  await fetch(`${bridgeUrl}/api/sync`, {
+  const res = await fetch(`${bridgeUrl}/api/sync`, {
     ...bridgeRequestInit(),
     method: "POST",
     signal: AbortSignal.timeout(5000),
-  }).catch(() => null);
+  });
+  if (!res.ok) throw new Error(`bridge sync ${res.status}`);
 }
 
-export async function getDashboardData() {
-  const bridgeUrl = process.env.MINECRAFT_BRIDGE_URL || "http://gizmo-server:3020";
+function offlineData(error: unknown, allowSampleFallback: boolean): DashboardData {
+  if (allowSampleFallback) {
+    return { players: fallbackPlayers, worldStats: fallbackWorldStats, boards, live: false, error: String(error instanceof Error ? error.message : error) };
+  }
+
+  return {
+    players: [],
+    worldStats: {
+      ...fallbackWorldStats,
+      playersOnline: 0,
+      trackedPlayers: 0,
+      uptime: "bridge unavailable",
+      lastSync: "live bridge unavailable",
+    },
+    boards,
+    live: false,
+    error: String(error instanceof Error ? error.message : error),
+  };
+}
+
+export async function getDashboardData(): Promise<DashboardData> {
+  const bridgeUrl = bridgeUrlFromEnv();
+  const allowSampleFallback = !isProductionBridgeConfigured();
   try {
     await syncBridgeStats(bridgeUrl);
     const res = await fetch(`${bridgeUrl}/api/leaderboards`, bridgeRequestInit());
-    if (!res.ok) throw new Error(`bridge ${res.status}`);
+    if (!res.ok) throw new Error(`bridge leaderboards ${res.status}`);
     const data = await res.json();
     const players = (data.players ?? []).map((p: any, index: number) => ({
       uuid: p.uuid,
@@ -45,6 +82,7 @@ export async function getDashboardData() {
       damageTaken: p.damageTaken ?? 0,
       lastSeen: p.lastSeen ? formatZagrebDateTime(p.lastSeen) : "tracked",
     }));
+    if (!players.length && isProductionBridgeConfigured()) throw new Error("bridge returned no players");
     return {
       players: players.length ? players : fallbackPlayers,
       worldStats: {
@@ -59,7 +97,7 @@ export async function getDashboardData() {
       boards,
       live: true,
     };
-  } catch {
-    return { players: fallbackPlayers, worldStats: fallbackWorldStats, boards, live: false };
+  } catch (error) {
+    return offlineData(error, allowSampleFallback);
   }
 }
