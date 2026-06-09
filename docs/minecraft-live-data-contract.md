@@ -10,6 +10,7 @@ This is the source-of-truth checklist for what the dashboard currently reads fro
 - Stats folder: `/home/cisco/minecraft-servers/gizmo-ivan/gizmo-ivan-dole/players/stats/*.json`
 - Player names: `/home/cisco/minecraft-servers/gizmo-ivan/usercache.json`
 - Join/leave sessions: `/home/cisco/minecraft-servers/gizmo-ivan/logs/*.log*`
+- Current online players: join/leave state from `/home/cisco/minecraft-servers/gizmo-ivan/logs/latest.log`
 - Bridge service: `minecraft-dashboard-bridge.service` on `gizmo-server:3020`
 - Production data path: Vercel → authenticated Tailscale Funnel bridge → MySQL + live world files
 
@@ -49,12 +50,14 @@ From server logs:
 - real Minecraft leave times
 - paired Minecraft world session durations
 - overlapping duplicate sessions are merged/upserted
+- current online count/player list from latest log open joins
 
 World/sync metadata:
 
 - world display name: `Gizmo Ivan — Dole`
 - difficulty label: `Hard Survival`
 - tracked player count
+- current online player count/list
 - latest successful sync time
 - sync source path and run status/details in `sync_runs`
 
@@ -81,6 +84,7 @@ The bridge combines Minecraft player rows with app/user profile rows:
 - total Minecraft playtime
 - latest stats snapshot
 - recent Minecraft world sessions
+- currently online/open session state when present
 
 ## Server diagnostics collected separately
 
@@ -91,3 +95,4 @@ These are server/host telemetry, not world stats:
 - disk used/available for the world path
 - network interface and Wi‑Fi/SSID when available
 - Minecraft service PID, status, RSS memory, uptime
+- current Minecraft online player count/list

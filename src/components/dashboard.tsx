@@ -111,13 +111,13 @@ function OverviewSection({ players, worldStats, live, refreshing }: { players: D
     <>
       <div className="grid gap-4 md:grid-cols-4">
         {statCards.map(([k, v]) => (
-          <div key={k} className="rounded-2xl border border-white/10 bg-white/8 p-5 backdrop-blur"><p className="text-sm text-slate-400">{k}</p>{refreshing || !v ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v}</p>}</div>
+          <div key={k} className="rounded-2xl border border-white/10 bg-white/8 p-5 backdrop-blur"><p className="text-sm text-slate-400">{k}</p>{refreshing ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v ?? "No data"}</p>}</div>
         ))}
       </div>
       <section className="grid gap-5 lg:grid-cols-3">
         <article className="rounded-3xl border border-white/10 bg-slate-950/60 p-5 lg:col-span-2">
           <p className="text-sm uppercase tracking-[0.3em] text-emerald-200/70">Current king</p>
-          {refreshing || !top ? <DataSkeleton className="mt-3 h-12 w-60" /> : <h2 className="mt-2 text-4xl font-black">{top.avatar} {top.name}</h2>}
+          {refreshing ? <DataSkeleton className="mt-3 h-12 w-60" /> : top ? <h2 className="mt-2 text-4xl font-black">{top.avatar} {top.name}</h2> : <h2 className="mt-2 text-2xl font-black text-slate-300">No player data loaded yet</h2>}
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <Stat label="Score" value={!refreshing && top ? format(top.score) : null} />
             <Stat label="Diamonds" value={!refreshing && top ? String(top.diamonds) : null} />
@@ -142,7 +142,7 @@ function PlayersSection({ players, live, refreshing }: { players: DashboardPlaye
     <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-black">Player profiles</h2><span className="rounded-full bg-emerald-400/15 px-3 py-1 text-sm text-emerald-200">{refreshing ? "Refreshing data" : live ? "Live bridge data · auto-refreshing" : "Last loaded data"}</span></div>
       <div className="grid gap-4 md:grid-cols-3">
-        {refreshing ? [0, 1, 2].map((index) => <PlayerCardSkeleton key={index} />) : players.map((p, index) => <PlayerCard key={p.uuid} player={p} rank={index + 1} />)}
+        {refreshing ? [0, 1, 2].map((index) => <PlayerCardSkeleton key={index} />) : players.length ? players.map((p, index) => <PlayerCard key={p.uuid} player={p} rank={index + 1} />) : <p className="text-sm text-slate-300">No player data loaded yet.</p>}
       </div>
     </section>
   );
@@ -202,8 +202,8 @@ function BoardsSection({ players, boards, refreshing }: { players: DashboardPlay
           return (
             <div key={b.title} className="rounded-2xl border border-emerald-300/10 bg-emerald-300/8 p-4">
               <p className="text-sm text-emerald-200">{b.title} · {b.metric}</p>
-              {refreshing || !winner ? <DataSkeleton className="mt-2 h-7 w-36" /> : <p className="mt-1 text-xl font-black">{winner.name}</p>}
-              {refreshing || !winner ? <DataSkeleton className="mt-2 h-4 w-56" /> : <p className="text-sm text-slate-300">{formatBoardValue(Number(winner[b.field]), b.suffix)} · {"roast" in b ? b.roast : "top tracked player"}</p>}
+              {refreshing ? <DataSkeleton className="mt-2 h-7 w-36" /> : winner ? <p className="mt-1 text-xl font-black">{winner.name}</p> : <p className="mt-1 text-sm font-bold text-slate-300">No player data loaded yet</p>}
+              {refreshing ? <DataSkeleton className="mt-2 h-4 w-56" /> : winner ? <p className="text-sm text-slate-300">{formatBoardValue(Number(winner[b.field]), b.suffix)} · {"roast" in b ? b.roast : "top tracked player"}</p> : <p className="text-sm text-slate-400">Waiting for live bridge data.</p>}
               <div className="mt-3 space-y-2">
                 {refreshing ? [0, 1, 2].map((index) => (
                   <div key={`${b.title}-loading-${index}`} className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm">
@@ -237,4 +237,4 @@ function TrackingSection() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | null }) { return <div className="rounded-xl bg-black/25 p-3"><p className="text-slate-400">{label}</p>{value ? <p className="font-bold text-white">{value}</p> : <DataSkeleton className="mt-2 h-5 w-20" />}</div>; }
+function Stat({ label, value }: { label: string; value: string | null }) { return <div className="rounded-xl bg-black/25 p-3"><p className="text-slate-400">{label}</p><p className="font-bold text-white">{value ?? "No data"}</p></div>; }

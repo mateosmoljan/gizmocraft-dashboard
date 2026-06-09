@@ -193,6 +193,10 @@ async function recordInferredPlayerSession(db, playerUuid, currentPlayTicks, pre
 export async function syncMinecraftStats() {
   const { pool } = await import("./mysql.js");
   const db = await pool();
+  await db.execute(
+    "UPDATE sync_runs SET status='error', finished_at=NOW(3), details=CAST(? AS JSON) WHERE status='running' AND finished_at IS NULL AND started_at < DATE_SUB(NOW(3), INTERVAL 5 MINUTE)",
+    [JSON.stringify({ message: "stale running sync cleaned before new run" })],
+  );
   const started = new Date();
   const [run] = await db.execute("INSERT INTO sync_runs (source,status) VALUES (?,?)", [worldPath, "running"]);
   const runId = run.insertId;

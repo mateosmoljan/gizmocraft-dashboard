@@ -1,5 +1,6 @@
 import express from "express";
 import os from "node:os";
+import { readFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { pool } from "./mysql.js";
@@ -9,7 +10,9 @@ const app = express();
 const port = Number(process.env.PORT ?? 3020);
 const bridgeToken = process.env.MINECRAFT_BRIDGE_TOKEN;
 const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
+const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-servers/gizmo-ivan";
 const execFileAsync = promisify(execFile);
+let activeSyncPromise = null;
 
 app.use(express.json({ limit: "1mb" }));
 
@@ -70,6 +73,39 @@ async function runCommand(command, args = [], timeout = 1500) {
     return "";
   }
 }
+async function readServerProperties() {
+  try {
+    const text = await readFile(`${serverRoot}/server.properties`, "utf8");
+    return Object.fromEntries(text.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#") && line.includes("=")).map((line) => {
+      const [key, ...rest] = line.split("=");
+      return [key, rest.join("=")];
+    }));
+  } catch {
+    return {};
+  }
+}
+async function readOnlinePlayersFromLatestLog() {
+  const open = await readOpenSessionsFromLatestLog();
+  return [...open.keys()].sort((a, b) => a.localeCompare(b));
+}
+async function readOpenSessionsFromLatestLog() {
+  const open = new Map();
+  try {
+    const text = await readFile(`${serverRoot}/logs/latest.log`, "utf8");
+    const base = new Date();
+    for (const line of text.split("\n")) {
+      const match = line.match(/^\[(\d{2}):(\d{2}):(\d{2})\].*?: ([A-Za-z0-9_]{1,16}) (joined|left) the game\b/);
+      if (!match) continue;
+      const [, hour, minute, second, playerName, action] = match;
+      if (action === "joined") {
+        open.set(playerName, new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), Number(hour), Number(minute), Number(second))));
+      } else {
+        open.delete(playerName);
+      }
+    }
+  } catch {}
+  return open;
+}
 async function cpuUsagePercent() {
   const start = cpuSnapshot();
   await new Promise((resolve) => setTimeout(resolve, 200));
@@ -123,10 +159,13 @@ async function minecraftUsage() {
   if (!pid || pid === "0") pid = (await runCommand("pgrep", ["-f", "java.*(minecraft|gizmo|server)"]))?.split("\n")[0] ?? "";
   const rssKb = pid ? Number(await runCommand("ps", ["-o", "rss=", "-p", pid])) : 0;
   const uptime = pid ? await runCommand("ps", ["-o", "etime=", "-p", pid]) : "";
+  const onlinePlayers = await readOnlinePlayersFromLatestLog();
   return {
     status: pid ? "running" : "unknown",
     process: pid ? `pid ${pid}${service ? ` · ${service}` : ""}` : "not found",
     uptime: uptime || undefined,
+    playersOnline: onlinePlayers.length,
+    onlinePlayers,
     memory: {
       used: humanBytes(rssKb * 1024),
       percent: os.totalmem() > 0 && rssKb > 0 ? Math.round(((rssKb * 1024) / os.totalmem()) * 1000) / 10 : null,
@@ -183,7 +222,10 @@ app.get("/api/usage", handleUsage);
 app.get("/usage", handleUsage);
 
 async function handleSync(_req, res) {
-  try { res.json(await syncMinecraftStats()); }
+  try {
+    activeSyncPromise ??= syncMinecraftStats().finally(() => { activeSyncPromise = null; });
+    res.json(await activeSyncPromise);
+  }
   catch (err) { res.status(500).json({ status: "error", message: String(err?.message ?? err) }); }
 }
 app.post("/api/sync", handleSync);
@@ -194,10 +236,22 @@ async function handleLeaderboards(_req, res) {
   const [rows] = await db.query(`SELECT p.uuid,p.name,p.last_seen_at,s.deaths,s.mobs_killed,s.blocks_mined,s.blocks_placed,s.items_crafted,s.diamonds_mined,s.distance_cm,s.play_ticks,s.raw_stats
     FROM players p JOIN player_stat_snapshots s ON s.id=(SELECT MAX(id) FROM player_stat_snapshots WHERE player_uuid=p.uuid)
     ORDER BY s.diamonds_mined DESC, s.blocks_mined DESC`);
-  const [syncRows] = await db.query("SELECT finished_at,status FROM sync_runs ORDER BY id DESC LIMIT 1");
+  const [syncRows] = await db.query("SELECT finished_at,status FROM sync_runs WHERE status='ok' ORDER BY id DESC LIMIT 1");
   await db.end();
   const players = rows.map(toPlayer);
-  res.json({ world: { name: "Gizmo Ivan — Dole", difficulty: "Hard Survival", trackedPlayers: players.length, lastSync: syncRows[0]?.finished_at ?? null }, players });
+  const [onlinePlayers, properties] = await Promise.all([readOnlinePlayersFromLatestLog(), readServerProperties()]);
+  res.json({
+    world: {
+      name: "Gizmo Ivan — Dole",
+      difficulty: "Hard Survival",
+      trackedPlayers: players.length,
+      playersOnline: onlinePlayers.length,
+      onlinePlayers,
+      maxPlayers: Number(properties["max-players"] ?? 10),
+      lastSync: syncRows[0]?.finished_at ?? null,
+    },
+    players: players.map((player) => ({ ...player, online: onlinePlayers.includes(player.name) })),
+  });
 }
 app.get("/api/leaderboards", handleLeaderboards);
 app.get("/leaderboards", handleLeaderboards);
@@ -262,6 +316,23 @@ async function profileForPlayerRow(db, row) {
     WHERE player_uuid=? ORDER BY joined_at DESC LIMIT 12`, [uuid]);
   const latest = snapshotRows[0] ? toPlayer({ ...row, ...snapshotRows[0] }) : null;
   const username = row.username ?? normalizeUsername(row.user_name ?? row.name ?? row.player_name ?? uuid);
+  const openSessions = await readOpenSessionsFromLatestLog();
+  const playerName = row.player_name ?? row.name ?? uuid;
+  const openJoinedAt = openSessions.get(playerName);
+  const sessions = sessionRows.map((session) => ({
+    id: String(session.id),
+    joinedAt: session.joined_at,
+    leftAt: session.left_at,
+    durationMs: toNumber(session.duration_ms),
+  }));
+  if (openJoinedAt && !sessions.some((session) => !session.leftAt)) {
+    sessions.unshift({
+      id: `open-${uuid}`,
+      joinedAt: openJoinedAt,
+      leftAt: null,
+      durationMs: Date.now() - openJoinedAt.getTime(),
+    });
+  }
   return {
     id: row.user_id ?? `player-${uuid}`,
     username,
@@ -270,18 +341,14 @@ async function profileForPlayerRow(db, row) {
     minecraftUuid: uuid,
     player: {
       uuid,
-      name: row.player_name ?? row.name ?? uuid,
+      name: playerName,
       avatarUrl: row.avatar_url ?? null,
       lastSeenAt: row.last_seen_at ?? null,
       totalPlayMs: toNumber(row.total_play_ms) || (latest?.playHours ? Math.round(latest.playHours * 60 * 60 * 1000) : 0),
+      online: Boolean(openJoinedAt),
       stats: latest,
       snapshots: latest ? [latest] : [],
-      sessions: sessionRows.map((session) => ({
-        id: String(session.id),
-        joinedAt: session.joined_at,
-        leftAt: session.left_at,
-        durationMs: toNumber(session.duration_ms),
-      })),
+      sessions,
     },
   };
 }
