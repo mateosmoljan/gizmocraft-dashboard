@@ -20,7 +20,7 @@ type PublicProfile = {
 
 type ProfilesPayload = { profiles: PublicProfile[]; live: boolean; fetchedAt: number };
 const PROFILES_CACHE_KEY = "gizmocraft:last-public-profiles";
-const PROFILES_CACHE_TTL_MS = 5 * 60 * 1000;
+const PROFILES_AUTO_REFRESH_MS = 30 * 1000;
 
 export function PublicProfiles() {
   const [payload, setPayload] = useState<ProfilesPayload | null>(null);
@@ -48,13 +48,51 @@ export function PublicProfiles() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadProfiles = async (force = false) => {
+      if (force && !cancelled) setRefreshing(true);
+      try {
+        const res = await fetch("/api/profiles", { cache: "no-store" });
+        if (!res.ok) throw new Error(`profiles ${res.status}`);
+        const next = { ...(await res.json()), fetchedAt: Date.now() } as ProfilesPayload;
+        if (!cancelled) {
+          setPayload(next);
+          writeClientCache(PROFILES_CACHE_KEY, next);
+          setFailed(false);
+        }
+      } catch {
+        if (!cancelled) setFailed(true);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    };
+
     const cached = readClientCache<ProfilesPayload>(PROFILES_CACHE_KEY);
     if (cached?.profiles?.length) {
       setPayload(cached);
       setLoading(false);
-      if (Date.now() - Number(cached.fetchedAt ?? 0) < PROFILES_CACHE_TTL_MS) return;
     }
-    void refresh(false);
+
+    void loadProfiles(false);
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadProfiles(false);
+    }, PROFILES_AUTO_REFRESH_MS);
+
+    const refreshOnFocus = () => void loadProfiles(false);
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
   }, []);
 
   return (
