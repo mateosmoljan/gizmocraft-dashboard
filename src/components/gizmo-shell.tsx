@@ -91,7 +91,7 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
               </div>
               <div>
                 <p className="text-2xl font-black text-white">{appStats.totalSignedIn}</p>
-                <p className="text-xs text-slate-400">signed in total</p>
+                <p className="text-xs text-slate-400">Google users total</p>
               </div>
             </div>
             <p className="mt-3 text-[11px] text-slate-500">{!appStats.live ? "Showing last loaded app activity." : "App activity only, not Minecraft players."}</p>

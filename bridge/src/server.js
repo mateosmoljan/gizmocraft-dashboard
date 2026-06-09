@@ -263,8 +263,9 @@ app.get("/leaderboards", handleLeaderboards);
 
 async function readAppStats(db) {
   const onlineSince = new Date(Date.now() - APP_ONLINE_WINDOW_MS);
-  const [onlineRows] = await db.query("SELECT COUNT(*) online FROM users WHERE app_last_seen_at >= ?", [onlineSince]);
-  const [totalRows] = await db.query("SELECT COUNT(*) total_signed_in FROM users WHERE email IS NOT NULL AND email <> ''");
+  const signedInWhere = "COALESCE(sign_in_count,0)>0";
+  const [onlineRows] = await db.query(`SELECT COUNT(*) online FROM users WHERE ${signedInWhere} AND app_last_seen_at >= ?`, [onlineSince]);
+  const [totalRows] = await db.query(`SELECT COUNT(*) total_signed_in FROM users WHERE ${signedInWhere}`);
   return { online: Number(onlineRows[0]?.online ?? 0), totalSignedIn: Number(totalRows[0]?.total_signed_in ?? 0), live: true };
 }
 
