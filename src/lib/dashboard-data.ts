@@ -27,11 +27,13 @@ export function bridgeRequestInit(): RequestInit {
   };
 }
 
+const BRIDGE_SYNC_TIMEOUT_MS = 30_000;
+
 async function syncBridgeStats(bridgeUrl: string) {
   const res = await fetch(`${bridgeUrl}/api/sync`, {
     ...bridgeRequestInit(),
     method: "POST",
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(BRIDGE_SYNC_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`bridge sync ${res.status}`);
 }
