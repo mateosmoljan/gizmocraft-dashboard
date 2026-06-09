@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Activity, BarChart3, ClipboardList, Settings, Trophy, UserRound, Users } from "lucide-react";
 import { gizmoNavItems } from "@/lib/navigation";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
+import { MinecraftScene } from "@/components/minecraft-scene";
 
 const icons = [BarChart3, UserRound, Trophy, ClipboardList, Activity, Users, Settings];
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
@@ -44,8 +45,9 @@ export function GizmoShell({ children, title = "GizmoCraft", subtitle = "Minecra
   const pending = pendingHref !== null && pendingHref !== pathname;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] text-white">
-      <div className="flex min-h-screen flex-col lg:flex-row">
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] text-white">
+      <MinecraftScene />
+      <div className="relative z-10 flex min-h-screen flex-col lg:flex-row">
         <aside className="flex flex-col border-b border-white/10 bg-slate-950/75 px-4 py-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
           <div className="flex items-center gap-3">
             <div className="grid size-11 place-items-center rounded-2xl border border-emerald-300/30 bg-emerald-300/12 text-2xl shadow-[0_0_24px_rgba(52,211,153,0.16)]">⛏️</div>
