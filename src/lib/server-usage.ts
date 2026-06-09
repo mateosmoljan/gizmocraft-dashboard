@@ -15,6 +15,7 @@ export type ServerUsageData = {
     status?: string;
     playersOnline?: number;
     maxPlayers?: number;
+    onlinePlayers?: string[];
     process?: string;
     uptime?: string;
   };
@@ -55,14 +56,20 @@ export async function getServerUsage(): Promise<ServerUsageData> {
     const disk = system.disk ?? data.disk ?? {};
     const network = system.network ?? data.network ?? {};
 
+    const activePlayers = Array.isArray(minecraft.onlinePlayers) ? minecraft.onlinePlayers.filter((name: unknown) => typeof name === "string") : [];
+    const activePlayerCount = typeof minecraft.playersOnline === "number" ? minecraft.playersOnline : activePlayers.length;
+    const activePlayerValue = minecraft.maxPlayers != null ? `${activePlayerCount}/${minecraft.maxPlayers} online` : `${activePlayerCount} online`;
+    const activePlayerDetail = activePlayers.length ? activePlayers.join(", ") : "No active Minecraft players right now";
+
     return {
       live: true,
       checkedAt: data.checkedAt ?? new Date().toISOString(),
       host: system.host ?? data.host,
       minecraft: {
         status: minecraft.status,
-        playersOnline: minecraft.playersOnline,
+        playersOnline: activePlayerCount,
         maxPlayers: minecraft.maxPlayers,
+        onlinePlayers: activePlayers,
         process: minecraft.process,
         uptime: minecraft.uptime,
       },
@@ -73,7 +80,7 @@ export async function getServerUsage(): Promise<ServerUsageData> {
         metric("Disk", disk.used ?? disk.usedHuman, disk.total ? `${disk.total} total` : disk.detail, disk.usedPercent ?? disk.percent),
         metric("Wi‑Fi", network.wifi?.ssid ?? network.ssid ?? (network.wifi?.connected === false ? "Not connected" : network.summary), network.detail ?? network.interface),
         metric("Network", network.summary ?? network.latency ?? "Unavailable", network.detail),
-        metric("Players", minecraft.playersOnline != null && minecraft.maxPlayers != null ? `${minecraft.playersOnline}/${minecraft.maxPlayers}` : minecraft.playersOnline, minecraft.status),
+        metric("Active Minecraft players", activePlayerValue, activePlayerDetail),
       ],
     };
   } catch (error) {

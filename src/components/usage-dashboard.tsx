@@ -13,8 +13,13 @@ export function UsageDashboard({ initialUsage }: { initialUsage: ServerUsageData
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    if (initialUsage.live) {
+      setUsage(initialUsage);
+      writeClientCache(USAGE_CACHE_KEY, initialUsage);
+      return;
+    }
     const cached = readClientCache<ServerUsageData>(USAGE_CACHE_KEY);
-    if (cached) setUsage(cached);
+    if (cached) setUsage({ ...cached, live: false, note: initialUsage.note ?? "Showing last loaded usage data while live telemetry refreshes." });
     else if (initialUsage.metrics.length) writeClientCache(USAGE_CACHE_KEY, initialUsage);
   }, [initialUsage]);
 
