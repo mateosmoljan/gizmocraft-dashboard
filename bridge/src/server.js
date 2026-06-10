@@ -1,6 +1,6 @@
 import express from "express";
 import os from "node:os";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { pool } from "./mysql.js";
@@ -12,6 +12,8 @@ const bridgeToken = process.env.MINECRAFT_BRIDGE_TOKEN;
 const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-servers/gizmo-ivan";
 const worldName = process.env.MINECRAFT_WORLD_NAME ?? "gizmo-ivan-dole";
+const mapArtifactsDir = process.env.MINECRAFT_MAP_ARTIFACTS_DIR ?? `${serverRoot}/gizmocraft-map`;
+const mapManifestPath = process.env.MINECRAFT_MAP_MANIFEST ?? `${mapArtifactsDir}/manifest.json`;
 const execFileAsync = promisify(execFile);
 let activeSyncPromise = null;
 
@@ -28,6 +30,11 @@ app.options("/api/public/world-map", allowPublicWorldMap);
 app.options("/public/world-map", allowPublicWorldMap);
 app.get("/api/public/world-map", allowPublicWorldMap, handleWorldMap);
 app.get("/public/world-map", allowPublicWorldMap, handleWorldMap);
+app.use("/public/world-map-artifacts", allowPublicWorldMap, express.static(mapArtifactsDir, {
+  fallthrough: true,
+  immutable: false,
+  maxAge: "15s",
+}));
 
 app.use((req, res, next) => {
   if (!bridgeToken) return next();
@@ -102,6 +109,57 @@ async function readServerProperties() {
     return {};
   }
 }
+function numberProperty(properties, key) {
+  const value = Number(properties[key]);
+  return Number.isFinite(value) ? value : null;
+}
+function chunkArea(distance) {
+  return Number.isFinite(distance) ? (distance * 2 + 1) ** 2 : null;
+}
+function serverSettingsPayload(properties, pendingRestart = false) {
+  const viewDistance = numberProperty(properties, "view-distance");
+  const simulationDistance = numberProperty(properties, "simulation-distance");
+  return {
+    live: true,
+    checkedAt: new Date().toISOString(),
+    propertiesPath: `${serverRoot}/server.properties`,
+    viewDistance,
+    simulationDistance,
+    maxPlayers: numberProperty(properties, "max-players"),
+    serverPort: numberProperty(properties, "server-port"),
+    pendingRestart,
+    effective: {
+      viewDiameterChunks: Number.isFinite(viewDistance) ? viewDistance * 2 + 1 : null,
+      viewAreaChunksPerPlayer: chunkArea(viewDistance),
+      simulationDiameterChunks: Number.isFinite(simulationDistance) ? simulationDistance * 2 + 1 : null,
+      simulationAreaChunksPerPlayer: chunkArea(simulationDistance),
+    },
+    note: pendingRestart ? "server.properties saved; restart Minecraft to apply changed distances" : "live server.properties values",
+  };
+}
+function validateChunkDistance(value, label) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 2 || number > 32) throw new Error(`${label} must be an integer from 2 to 32`);
+  return number;
+}
+async function writeServerProperties(updates) {
+  const filePath = `${serverRoot}/server.properties`;
+  const text = await readFile(filePath, "utf8");
+  const seen = new Set();
+  const lines = text.split("\n").map((line) => {
+    const match = line.match(/^([^#=][^=]*)=(.*)$/);
+    if (!match) return line;
+    const key = match[1].trim();
+    if (!(key in updates)) return line;
+    seen.add(key);
+    return `${key}=${updates[key]}`;
+  });
+  for (const [key, value] of Object.entries(updates)) {
+    if (!seen.has(key)) lines.push(`${key}=${value}`);
+  }
+  await writeFile(filePath, lines.join("\n"), "utf8");
+  return readServerProperties();
+}
 function parseRegionFileName(fileName) {
   const match = /^r\.(-?\d+)\.(-?\d+)\.mca$/.exec(String(fileName ?? ""));
   if (!match) return null;
@@ -133,6 +191,24 @@ async function readRegionDir() {
     } catch {}
   }
   return candidates[0];
+}
+async function readTrackingManifest() {
+  try {
+    const manifest = JSON.parse(await readFile(mapManifestPath, "utf8"));
+    return {
+      ...manifest,
+      publicBaseUrl: "/public/world-map-artifacts",
+      manifestPath: mapManifestPath,
+      available: true,
+    };
+  } catch (error) {
+    return {
+      available: false,
+      manifestPath: mapManifestPath,
+      status: "not-generated-yet",
+      note: "Run the live/player-survey mapper to generate manifest.json and map artifacts.",
+    };
+  }
 }
 async function handleWorldMap(_req, res) {
   try {
@@ -170,6 +246,7 @@ async function handleWorldMap(_req, res) {
         lastScan: new Date().toISOString(),
       },
       regions,
+      tracking: await readTrackingManifest(),
       live: true,
       visibility: {
         public: ["Spawn origin", "Loaded/discovered region files", "Approximate chunk coverage", "Live scan time"],
@@ -289,6 +366,25 @@ async function handleUsage(_req, res) {
     res.status(500).json({ error: String(err?.message ?? err) });
   }
 }
+async function handleServerSettings(_req, res) {
+  try {
+    res.json(serverSettingsPayload(await readServerProperties(), false));
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message ?? err) });
+  }
+}
+async function handleUpdateServerSettings(req, res) {
+  try {
+    const updates = {};
+    if (req.body?.viewDistance !== undefined) updates["view-distance"] = validateChunkDistance(req.body.viewDistance, "viewDistance");
+    if (req.body?.simulationDistance !== undefined) updates["simulation-distance"] = validateChunkDistance(req.body.simulationDistance, "simulationDistance");
+    if (!Object.keys(updates).length) return res.status(400).json({ error: "viewDistance or simulationDistance required" });
+    const properties = await writeServerProperties(updates);
+    res.json(serverSettingsPayload(properties, true));
+  } catch (err) {
+    res.status(400).json({ error: String(err?.message ?? err) });
+  }
+}
 function toPlayer(row) {
   const raw = rawStats(row);
   return {
@@ -317,6 +413,10 @@ app.get("/api/health", handleHealth);
 app.get("/health", handleHealth);
 app.get("/api/usage", handleUsage);
 app.get("/usage", handleUsage);
+app.get("/api/server-settings", handleServerSettings);
+app.get("/server-settings", handleServerSettings);
+app.put("/api/server-settings", handleUpdateServerSettings);
+app.put("/server-settings", handleUpdateServerSettings);
 app.get("/api/world-map", handleWorldMap);
 app.get("/world-map", handleWorldMap);
 

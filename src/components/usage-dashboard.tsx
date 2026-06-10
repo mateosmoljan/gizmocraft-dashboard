@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { ServerUsageData, ServerUsageMetric } from "@/lib/server-usage";
+import type { ChunkSettings } from "@/lib/server-settings";
 import { formatZagrebTime } from "@/lib/time";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 
 const USAGE_CACHE_KEY = "gizmocraft:last-usage-data";
+const SETTINGS_CACHE_KEY = "gizmocraft:last-chunk-settings";
 
-export function UsageDashboard({ initialUsage }: { initialUsage: ServerUsageData }) {
+export function UsageDashboard({ initialUsage, initialChunkSettings }: { initialUsage: ServerUsageData; initialChunkSettings: ChunkSettings }) {
   const [usage, setUsage] = useState(initialUsage);
+  const [chunkSettings, setChunkSettings] = useState(initialChunkSettings);
+  const [viewDistance, setViewDistance] = useState(String(initialChunkSettings.viewDistance ?? ""));
+  const [simulationDistance, setSimulationDistance] = useState(String(initialChunkSettings.simulationDistance ?? ""));
   const [error, setError] = useState<string | null>(null);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
     if (initialUsage.live) {
@@ -23,19 +30,70 @@ export function UsageDashboard({ initialUsage }: { initialUsage: ServerUsageData
     else if (initialUsage.metrics.length) writeClientCache(USAGE_CACHE_KEY, initialUsage);
   }, [initialUsage]);
 
+  useEffect(() => {
+    if (initialChunkSettings.live) {
+      setChunkSettings(initialChunkSettings);
+      setViewDistance(String(initialChunkSettings.viewDistance ?? ""));
+      setSimulationDistance(String(initialChunkSettings.simulationDistance ?? ""));
+      writeClientCache(SETTINGS_CACHE_KEY, initialChunkSettings);
+      return;
+    }
+    const cached = readClientCache<ChunkSettings>(SETTINGS_CACHE_KEY);
+    if (cached) setChunkSettings({ ...cached, live: false, note: initialChunkSettings.note ?? "Showing last loaded chunk settings while live settings refresh." });
+  }, [initialChunkSettings]);
+
   async function refreshUsage() {
     setError(null);
     setRefreshing(true);
     try {
-      const res = await fetch(`/api/usage?ts=${Date.now()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`refresh returned ${res.status}`);
-      const nextUsage = await res.json();
+      const [usageRes, settingsRes] = await Promise.all([
+        fetch(`/api/usage?ts=${Date.now()}`, { cache: "no-store" }),
+        fetch(`/api/server-settings?ts=${Date.now()}`, { cache: "no-store" }),
+      ]);
+      if (!usageRes.ok) throw new Error(`usage refresh returned ${usageRes.status}`);
+      const nextUsage = await usageRes.json();
       setUsage(nextUsage);
       writeClientCache(USAGE_CACHE_KEY, nextUsage);
+      if (settingsRes.ok) {
+        const nextSettings = await settingsRes.json();
+        setChunkSettings(nextSettings);
+        setViewDistance(String(nextSettings.viewDistance ?? ""));
+        setSimulationDistance(String(nextSettings.simulationDistance ?? ""));
+        writeClientCache(SETTINGS_CACHE_KEY, nextSettings);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "refresh failed");
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function saveChunkSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSettingsMessage(null);
+    setError(null);
+    setSavingSettings(true);
+    try {
+      const payload = {
+        viewDistance: Number(viewDistance),
+        simulationDistance: Number(simulationDistance),
+      };
+      const res = await fetch("/api/server-settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `settings update returned ${res.status}`);
+      setChunkSettings(body);
+      setViewDistance(String(body.viewDistance ?? ""));
+      setSimulationDistance(String(body.simulationDistance ?? ""));
+      writeClientCache(SETTINGS_CACHE_KEY, body);
+      setSettingsMessage(body.pendingRestart ? "Saved. Restart the Minecraft server for the new chunk distances to fully apply." : "Saved chunk settings.");
+    } catch (err) {
+      setSettingsMessage(err instanceof Error ? err.message : "Could not save chunk settings.");
+    } finally {
+      setSavingSettings(false);
     }
   }
 
@@ -77,6 +135,62 @@ export function UsageDashboard({ initialUsage }: { initialUsage: ServerUsageData
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {usage.metrics.map((entry) => <UsageCard key={entry.label} metric={entry} refreshing={refreshing} />)}
+      </section>
+
+      <section className="rounded-3xl border border-cyan-300/20 bg-cyan-300/8 p-5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-cyan-200/80">Chunk level</p>
+            <h2 className="mt-1 text-2xl font-black text-white">Minecraft chunk distance</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Current server.properties values. View distance controls visible/generated chunks around players; simulation distance controls ticking chunks.
+            </p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-black ${chunkSettings.live ? "bg-lime-300 text-slate-950" : "bg-amber-300 text-slate-950"}`}>
+            {chunkSettings.live ? "live settings" : "last loaded settings"}
+          </span>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <UsageCard metric={{ label: "View distance", value: String(chunkSettings.viewDistance ?? "—"), detail: chunkSettings.effective?.viewAreaChunksPerPlayer ? `${chunkSettings.effective.viewDiameterChunks} × ${chunkSettings.effective.viewDiameterChunks} = ${chunkSettings.effective.viewAreaChunksPerPlayer} visible chunks/player` : undefined }} refreshing={savingSettings} />
+          <UsageCard metric={{ label: "Simulation distance", value: String(chunkSettings.simulationDistance ?? "—"), detail: chunkSettings.effective?.simulationAreaChunksPerPlayer ? `${chunkSettings.effective.simulationDiameterChunks} × ${chunkSettings.effective.simulationDiameterChunks} = ${chunkSettings.effective.simulationAreaChunksPerPlayer} ticking chunks/player` : undefined }} refreshing={savingSettings} />
+          <UsageCard metric={{ label: "Max players", value: String(chunkSettings.maxPlayers ?? "—"), detail: chunkSettings.serverPort ? `Port ${chunkSettings.serverPort}` : undefined }} refreshing={savingSettings} />
+          <UsageCard metric={{ label: "Apply status", value: chunkSettings.pendingRestart ? "Restart needed" : "Active file value", detail: chunkSettings.note ?? "Changes save to server.properties." }} refreshing={savingSettings} />
+        </div>
+        <form onSubmit={saveChunkSettings} className="mt-5 grid gap-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <label className="text-sm font-bold text-slate-200">
+            View distance
+            <input
+              type="number"
+              min="2"
+              max="32"
+              step="1"
+              value={viewDistance}
+              onChange={(event) => setViewDistance(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-base text-white outline-none transition focus:border-cyan-200"
+            />
+          </label>
+          <label className="text-sm font-bold text-slate-200">
+            Simulation distance
+            <input
+              type="number"
+              min="2"
+              max="32"
+              step="1"
+              value={simulationDistance}
+              onChange={(event) => setSimulationDistance(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-base text-white outline-none transition focus:border-cyan-200"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={savingSettings}
+            className="rounded-full bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-70"
+          >
+            {savingSettings ? "Saving…" : "Save chunk level"}
+          </button>
+        </form>
+        {settingsMessage ? <p className="mt-3 text-sm font-bold text-cyan-100">{settingsMessage}</p> : null}
+        <p className="mt-3 text-xs text-slate-400">Safe range is 2–32. Higher values load many more chunks and can cause lag. A Minecraft restart/reload may be needed before players feel the new distance.</p>
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
