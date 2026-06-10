@@ -19,6 +19,11 @@ const emptyMap: WorldMapData = {
     lastScan: "waiting for live scan",
   },
   regions: [],
+  tracking: {
+    available: false,
+    status: "waiting-for-mapper",
+    note: "Minecraft tracking backend has not published a map manifest yet.",
+  },
   live: false,
   visibility: {
     public: ["Spawn origin", "Discovered region coverage", "Live scan time"],
@@ -50,6 +55,26 @@ function regionCenter(region: WorldMapRegion) {
   };
 }
 
+function latLonToSphere(lat: number, lon: number, radius = 2.045) {
+  const phi = THREE.MathUtils.degToRad(90 - lat);
+  const theta = THREE.MathUtils.degToRad(lon + 180);
+  return new THREE.Vector3(
+    -radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta),
+  );
+}
+
+const visibleLandPatches = [
+  { lat: 45, lon: -100, size: 0.34 },
+  { lat: -15, lon: -60, size: 0.42 },
+  { lat: 50, lon: 20, size: 0.5 },
+  { lat: 12, lon: 20, size: 0.38 },
+  { lat: 36, lon: 95, size: 0.54 },
+  { lat: -25, lon: 135, size: 0.32 },
+  { lat: 72, lon: -40, size: 0.24 },
+];
+
 function GlobeScene({ data }: { data: WorldMapData }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const dataRef = useRef(data);
@@ -62,39 +87,67 @@ function GlobeScene({ data }: { data: WorldMapData }) {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    camera.position.set(0, 0.35, 6.2);
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+    camera.position.set(0, 0.25, 5.4);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.domElement.style.position = "relative";
+    renderer.domElement.style.zIndex = "1";
     mount.appendChild(renderer.domElement);
 
     const root = new THREE.Group();
+    root.rotation.x = -0.18;
     scene.add(root);
 
-    const globeGeometry = new THREE.SphereGeometry(2, 64, 64);
-    const globeMaterial = new THREE.MeshStandardMaterial({ color: 0x103d35, roughness: 0.85, metalness: 0.1, transparent: true, opacity: 0.92 });
+    const globeGeometry = new THREE.SphereGeometry(2, 96, 96);
+    const globeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1267d6,
+      emissive: 0x082f49,
+      emissiveIntensity: 0.38,
+      roughness: 0.68,
+      metalness: 0.04,
+    });
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
     root.add(globe);
 
-    const wireGeometry = new THREE.SphereGeometry(2.012, 32, 20);
-    const wireMaterial = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, wireframe: true, transparent: true, opacity: 0.12 });
+    const atmosphereGeometry = new THREE.SphereGeometry(2.08, 64, 64);
+    const atmosphereMaterial = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.14, side: THREE.BackSide });
+    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    root.add(atmosphere);
+
+    const wireGeometry = new THREE.SphereGeometry(2.018, 36, 24);
+    const wireMaterial = new THREE.MeshBasicMaterial({ color: 0xbbf7d0, wireframe: true, transparent: true, opacity: 0.2 });
     const wire = new THREE.Mesh(wireGeometry, wireMaterial);
     root.add(wire);
+
+    const landGroup = new THREE.Group();
+    const landMaterial = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.82 });
+    for (const patch of visibleLandPatches) {
+      const land = new THREE.Mesh(new THREE.CircleGeometry(patch.size, 18), landMaterial);
+      land.position.copy(latLonToSphere(patch.lat, patch.lon));
+      land.lookAt(new THREE.Vector3(0, 0, 0));
+      land.rotateY(Math.PI);
+      landGroup.add(land);
+    }
+    root.add(landGroup);
 
     const regionGroup = new THREE.Group();
     root.add(regionGroup);
 
-    const spawnGeometry = new THREE.SphereGeometry(0.055, 16, 16);
+    const spawnGeometry = new THREE.SphereGeometry(0.075, 16, 16);
     const spawnMaterial = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
     const spawnMarker = new THREE.Mesh(spawnGeometry, spawnMaterial);
+    spawnMarker.position.copy(latLonToSphere(0, 0, 2.15));
     root.add(spawnMarker);
 
-    const ambient = new THREE.AmbientLight(0xc7fff2, 1.15);
-    const key = new THREE.DirectionalLight(0x8fffe0, 2.2);
+    const ambient = new THREE.AmbientLight(0xe0fff7, 1.45);
+    const key = new THREE.DirectionalLight(0xffffff, 3.5);
     key.position.set(3, 4, 6);
-    scene.add(ambient, key);
+    const rim = new THREE.DirectionalLight(0x22d3ee, 1.8);
+    rim.position.set(-4, -1, -3);
+    scene.add(ambient, key, rim);
 
     const pointer = { down: false, x: 0, y: 0 };
     const onPointerDown = (event: PointerEvent) => { pointer.down = true; pointer.x = event.clientX; pointer.y = event.clientY; renderer.domElement.setPointerCapture(event.pointerId); };
@@ -169,8 +222,14 @@ function GlobeScene({ data }: { data: WorldMapData }) {
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       globeGeometry.dispose();
       globeMaterial.dispose();
+      atmosphereGeometry.dispose();
+      atmosphereMaterial.dispose();
       wireGeometry.dispose();
       wireMaterial.dispose();
+      landGroup.traverse((object) => {
+        if (object instanceof THREE.Mesh) object.geometry.dispose();
+      });
+      landMaterial.dispose();
       spawnGeometry.dispose();
       spawnMaterial.dispose();
       regionGroup.traverse((object) => {
@@ -185,7 +244,18 @@ function GlobeScene({ data }: { data: WorldMapData }) {
     };
   }, []);
 
-  return <div ref={mountRef} className="min-h-[420px] w-full cursor-grab rounded-[2rem] border border-emerald-300/20 bg-black/30 active:cursor-grabbing" aria-label="Interactive 3D discovered world globe" />;
+  return (
+    <div
+      ref={mountRef}
+      className="relative min-h-[520px] w-full cursor-grab overflow-hidden rounded-[2rem] border border-cyan-200/30 bg-[radial-gradient(circle_at_50%_45%,rgba(56,189,248,0.22),rgba(15,23,42,0.7)_42%,rgba(2,6,23,0.95)_72%)] shadow-2xl shadow-cyan-950/40 active:cursor-grabbing"
+      aria-label="Interactive 3D discovered world globe"
+    >
+      <div className="pointer-events-none absolute inset-8 rounded-full bg-cyan-300/10 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-5 left-6 z-10 rounded-full border border-cyan-200/25 bg-slate-950/55 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-cyan-100">
+        Drag to rotate Earth
+      </div>
+    </div>
+  );
 }
 
 export function WorldMapDashboard() {
@@ -223,6 +293,10 @@ export function WorldMapDashboard() {
     return `X ${format(bounds.minX)} → ${format(bounds.maxX)} · Z ${format(bounds.minZ)} → ${format(bounds.maxZ)}`;
   }, [data.world.loadedBlockBounds]);
 
+  const trackingArtifacts = data.tracking?.artifacts ?? [];
+  const artifactBase = data.tracking?.publicBaseUrl ?? "";
+  const artifactUrl = (path: string) => path.startsWith("http") || path.startsWith("/") ? path : `${artifactBase}/${path}`;
+
   return (
     <div className="space-y-6">
       <header className="grid gap-5 rounded-3xl border border-emerald-300/20 bg-white/8 p-6 shadow-2xl shadow-black/30 backdrop-blur lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
@@ -254,6 +328,43 @@ export function WorldMapDashboard() {
             <Visibility label="Restricted/private later" items={data.visibility.restricted} tone="rose" />
           </div>
         </aside>
+      </section>
+
+      <section className="rounded-3xl border border-cyan-300/20 bg-cyan-300/8 p-5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-200/80">Minecraft tracking backend</p>
+            <h2 className="mt-1 text-2xl font-black">Live-survey map layer</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              {data.tracking?.available
+                ? `Generated ${data.tracking.generatedAt ?? "recently"} via ${data.tracking.method ?? "world/player survey"}.`
+                : data.tracking?.note ?? "Waiting for the mapper bot/survey collector to publish map artifacts."}
+            </p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-black ${data.tracking?.available ? "bg-emerald-300 text-slate-950" : "bg-amber-300 text-slate-950"}`}>
+            {data.tracking?.available ? "tracking artifacts online" : data.tracking?.status ?? "not generated"}
+          </span>
+        </div>
+        {data.tracking?.players?.length ? (
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            {data.tracking.players.map((player) => (
+              <div key={player.name} className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm">
+                <p className="font-black text-white">{player.name}</p>
+                <p className="text-slate-300">X {format(player.x)} · Y {format(player.y)} · Z {format(player.z)}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {trackingArtifacts.length ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {trackingArtifacts.filter((artifact) => artifact.kind === "image").map((artifact) => (
+              <a key={artifact.id} href={artifactUrl(artifact.path)} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-2xl border border-white/10 bg-black/25">
+                <img src={artifactUrl(artifact.path)} alt={artifact.label} className="h-48 w-full object-cover opacity-90 transition group-hover:scale-[1.02] group-hover:opacity-100" />
+                <p className="px-4 py-3 text-sm font-black text-white">{artifact.label}</p>
+              </a>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
