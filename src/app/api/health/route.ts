@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { bridgeRequestInit } from "@/lib/dashboard-data";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 async function withTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -28,7 +29,7 @@ async function bridgeStatus() {
   try {
     const res = await fetch(`${bridgeUrl}/api/health`, {
       ...bridgeRequestInit(),
-      signal: AbortSignal.timeout(2500),
+      signal: AbortSignal.timeout(12_000),
     });
     return { configured: true, connected: res.ok };
   } catch (error) {

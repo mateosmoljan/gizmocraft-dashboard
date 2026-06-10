@@ -19,6 +19,10 @@ describe("profile model helpers", () => {
     );
   });
 
+  it("does not reset a saved profile image when an update omits the image field", () => {
+    assert.deepEqual(profileUpdateFromInput({ name: "Only Name" }), { name: "Only Name" });
+  });
+
   it("accepts compressed imported profile images as data URLs", () => {
     const image = "data:image/jpeg;base64," + Buffer.from("small avatar").toString("base64");
     assert.equal(profileUpdateFromInput({ image }).image, image);

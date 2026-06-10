@@ -1,6 +1,6 @@
 import express from "express";
 import os from "node:os";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { pool } from "./mysql.js";
@@ -11,10 +11,23 @@ const port = Number(process.env.PORT ?? 3020);
 const bridgeToken = process.env.MINECRAFT_BRIDGE_TOKEN;
 const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-servers/gizmo-ivan";
+const worldName = process.env.MINECRAFT_WORLD_NAME ?? "gizmo-ivan-dole";
 const execFileAsync = promisify(execFile);
 let activeSyncPromise = null;
 
 app.use(express.json({ limit: "1mb" }));
+
+function allowPublicWorldMap(req, res, next) {
+  res.setHeader("access-control-allow-origin", "*");
+  res.setHeader("access-control-allow-methods", "GET,OPTIONS");
+  res.setHeader("access-control-allow-headers", "content-type");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  return next();
+}
+app.options("/api/public/world-map", allowPublicWorldMap);
+app.options("/public/world-map", allowPublicWorldMap);
+app.get("/api/public/world-map", allowPublicWorldMap, handleWorldMap);
+app.get("/public/world-map", allowPublicWorldMap, handleWorldMap);
 
 app.use((req, res, next) => {
   if (!bridgeToken) return next();
@@ -87,6 +100,85 @@ async function readServerProperties() {
     }));
   } catch {
     return {};
+  }
+}
+function parseRegionFileName(fileName) {
+  const match = /^r\.(-?\d+)\.(-?\d+)\.mca$/.exec(String(fileName ?? ""));
+  if (!match) return null;
+  const regionX = Number(match[1]);
+  const regionZ = Number(match[2]);
+  if (!Number.isInteger(regionX) || !Number.isInteger(regionZ)) return null;
+  return { regionX, regionZ };
+}
+function regionToBlockBounds(regionX, regionZ) {
+  const minBlockX = regionX * 512;
+  const minBlockZ = regionZ * 512;
+  return { minBlockX, minBlockZ, maxBlockX: minBlockX + 511, maxBlockZ: minBlockZ + 511 };
+}
+async function readWorldSpawn() {
+  // Without an NBT dependency, keep spawn at Minecraft's default origin when
+  // level.dat cannot be parsed. The globe still expands from the loaded region
+  // files around that origin, and this can be upgraded to exact NBT later.
+  return { x: 0, z: 0 };
+}
+async function readRegionDir() {
+  const candidates = [
+    `${serverRoot}/${worldName}/region`,
+    `${serverRoot}/${worldName}/dimensions/minecraft/overworld/region`,
+  ];
+  for (const candidate of candidates) {
+    try {
+      await readdir(candidate);
+      return candidate;
+    } catch {}
+  }
+  return candidates[0];
+}
+async function handleWorldMap(_req, res) {
+  try {
+    const regionDir = await readRegionDir();
+    const entries = await readdir(regionDir);
+    const regions = [];
+    for (const file of entries) {
+      const parsed = parseRegionFileName(file);
+      if (!parsed) continue;
+      const bounds = regionToBlockBounds(parsed.regionX, parsed.regionZ);
+      const info = await stat(`${regionDir}/${file}`).catch(() => null);
+      regions.push({
+        id: `${parsed.regionX}:${parsed.regionZ}`,
+        ...parsed,
+        ...bounds,
+        chunkCount: 1024,
+        updatedAt: info?.mtime ? info.mtime.toISOString() : null,
+      });
+    }
+    regions.sort((a, b) => Math.hypot(a.regionX, a.regionZ) - Math.hypot(b.regionX, b.regionZ) || a.regionX - b.regionX || a.regionZ - b.regionZ);
+    const loadedBlockBounds = regions.length ? {
+      minX: Math.min(...regions.map((region) => region.minBlockX)),
+      minZ: Math.min(...regions.map((region) => region.minBlockZ)),
+      maxX: Math.max(...regions.map((region) => region.maxBlockX)),
+      maxZ: Math.max(...regions.map((region) => region.maxBlockZ)),
+    } : null;
+    res.json({
+      world: {
+        name: "Gizmo Ivan — Dole",
+        dimension: "overworld",
+        spawn: await readWorldSpawn(),
+        regionCount: regions.length,
+        discoveredChunks: regions.reduce((sum, region) => sum + region.chunkCount, 0),
+        loadedBlockBounds,
+        lastScan: new Date().toISOString(),
+      },
+      regions,
+      live: true,
+      visibility: {
+        public: ["Spawn origin", "Loaded/discovered region files", "Approximate chunk coverage", "Live scan time"],
+        signedIn: ["Player-linked overlays", "Personal discovered path summaries"],
+        restricted: ["Individual player trails", "Private base/home markers", "Admin-only annotations"],
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message ?? err) });
   }
 }
 async function readOnlinePlayersFromLatestLog() {
@@ -225,6 +317,8 @@ app.get("/api/health", handleHealth);
 app.get("/health", handleHealth);
 app.get("/api/usage", handleUsage);
 app.get("/usage", handleUsage);
+app.get("/api/world-map", handleWorldMap);
+app.get("/world-map", handleWorldMap);
 
 async function handleSync(_req, res) {
   try {
@@ -314,6 +408,18 @@ async function handleAppActivity(req, res) {
   }
 }
 
+function profileForUserRow(row) {
+  return {
+    id: row.user_id,
+    email: row.email ?? null,
+    username: row.username,
+    name: row.user_name ?? row.username,
+    image: row.image ?? null,
+    minecraftUuid: row.minecraft_uuid ?? null,
+    player: null,
+  };
+}
+
 async function profileForPlayerRow(db, row) {
   const uuid = row.uuid ?? row.minecraft_uuid;
   const [snapshotRows] = await db.query(`SELECT deaths,mobs_killed,blocks_mined,blocks_placed,items_crafted,diamonds_mined,distance_cm,play_ticks,raw_stats,captured_at
@@ -385,16 +491,37 @@ async function handleProfiles(req, res) {
   const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 200);
   const db = await pool();
   const [rows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
-      u.id AS user_id,u.username,u.name AS user_name,u.image,u.minecraft_uuid
+      u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid
     FROM players p LEFT JOIN users u ON u.minecraft_uuid=p.uuid
     ORDER BY COALESCE(u.updated_at,p.last_seen_at,p.first_seen_at) DESC LIMIT ?`, [limit]);
   const profiles = [];
+  const seenProfileKeys = new Set();
   for (const row of rows) {
     await ensurePlayerOnlyUser(db, row);
     const [profileRows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
-      u.id AS user_id,u.username,u.name AS user_name,u.image,u.minecraft_uuid
+      u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid
       FROM players p LEFT JOIN users u ON u.minecraft_uuid=p.uuid WHERE p.uuid=? LIMIT 1`, [row.uuid]);
-    profiles.push(await profileForPlayerRow(db, profileRows[0] ?? row));
+    const profile = await profileForPlayerRow(db, profileRows[0] ?? row);
+    profiles.push(profile);
+    seenProfileKeys.add(profile.id);
+    if (profile.minecraftUuid) seenProfileKeys.add(profile.minecraftUuid);
+  }
+
+  const remaining = Math.max(limit - profiles.length, 0);
+  if (remaining > 0) {
+    const [userRows] = await db.query(`SELECT u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid,
+        p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms
+      FROM users u LEFT JOIN players p ON p.uuid=u.minecraft_uuid
+      WHERE COALESCE(u.sign_in_count,0)>0
+      ORDER BY u.updated_at DESC LIMIT ?`, [limit]);
+    for (const row of userRows) {
+      if (seenProfileKeys.has(row.user_id) || (row.minecraft_uuid && seenProfileKeys.has(row.minecraft_uuid))) continue;
+      const profile = row.uuid ? await profileForPlayerRow(db, row) : profileForUserRow(row);
+      profiles.push(profile);
+      seenProfileKeys.add(profile.id);
+      if (profile.minecraftUuid) seenProfileKeys.add(profile.minecraftUuid);
+      if (profiles.length >= limit) break;
+    }
   }
   await db.end();
   res.json({ profiles });
@@ -403,12 +530,12 @@ async function handleProfiles(req, res) {
 async function handleProfileByUsername(req, res) {
   const username = normalizeUsername(req.params.username);
   const db = await pool();
-  const [rows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
-      u.id AS user_id,u.username,u.name AS user_name,u.image,u.minecraft_uuid
-    FROM players p LEFT JOIN users u ON u.minecraft_uuid=p.uuid
+  const [rows] = await db.query(`SELECT u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid,
+      p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms
+    FROM users u LEFT JOIN players p ON p.uuid=u.minecraft_uuid
     WHERE u.username=? OR LOWER(p.name)=? LIMIT 1`, [username, username]);
   if (!rows[0]) { await db.end(); return res.status(404).json({ error: "profile not found" }); }
-  const profile = await profileForPlayerRow(db, rows[0]);
+  const profile = rows[0].uuid ? await profileForPlayerRow(db, rows[0]) : profileForUserRow(rows[0]);
   await db.end();
   res.json({ profile });
 }
@@ -432,7 +559,8 @@ async function handleUpdateProfile(req, res) {
   if (!email) return res.status(400).json({ error: "email required" });
   const username = normalizeUsername(req.body?.username ?? email.split("@")[0]);
   const name = String(req.body?.name ?? username).trim().slice(0, 191) || username;
-  const image = req.body?.image ? String(req.body.image) : null;
+  const hasImage = Object.prototype.hasOwnProperty.call(req.body ?? {}, "image");
+  const image = hasImage ? (req.body?.image ? String(req.body.image) : null) : undefined;
   const requestedMinecraftName = normalizeMinecraftUsername(req.body?.minecraftUsername);
   let minecraftUuid = req.body?.minecraftUuid ? String(req.body.minecraftUuid) : null;
   const db = await pool();
@@ -444,21 +572,21 @@ async function handleUpdateProfile(req, res) {
   const syntheticEmail = minecraftUuid ? playerOnlyProfileEmail(minecraftUuid) : null;
   if (existingRows[0]) {
     if (syntheticEmail && syntheticEmail !== email) await db.query("DELETE FROM users WHERE email=?", [syntheticEmail]);
-    await db.query("UPDATE users SET username=?,name=?,image=?,minecraft_uuid=COALESCE(?,minecraft_uuid),updated_at=NOW(3) WHERE email=?", [username, name, image, minecraftUuid, email]);
+    await db.query("UPDATE users SET username=?,name=?,image=COALESCE(?,image),minecraft_uuid=COALESCE(?,minecraft_uuid),updated_at=NOW(3) WHERE email=?", [username, name, image, minecraftUuid, email]);
   } else if (syntheticEmail) {
     const [syntheticRows] = await db.query("SELECT id FROM users WHERE email=? LIMIT 1", [syntheticEmail]);
     if (syntheticRows[0]) {
-      await db.query("UPDATE users SET email=?,username=?,name=?,image=?,updated_at=NOW(3) WHERE id=?", [email, username, name, image, syntheticRows[0].id]);
+      await db.query("UPDATE users SET email=?,username=?,name=?,image=COALESCE(?,image),updated_at=NOW(3) WHERE id=?", [email, username, name, image, syntheticRows[0].id]);
     } else {
-      await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image, minecraftUuid]);
+      await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image ?? null, minecraftUuid]);
     }
   } else {
-    await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image, minecraftUuid]);
+    await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image ?? null, minecraftUuid]);
   }
   const [rows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
-      u.id AS user_id,u.username,u.name AS user_name,u.image,u.minecraft_uuid
+      u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid
     FROM users u LEFT JOIN players p ON p.uuid=u.minecraft_uuid WHERE u.email=? LIMIT 1`, [email]);
-  const profile = rows[0]?.uuid ? await profileForPlayerRow(db, rows[0]) : { id: rows[0]?.user_id, email, username, name, image, minecraftUuid, player: null };
+  const profile = rows[0]?.uuid ? await profileForPlayerRow(db, rows[0]) : profileForUserRow(rows[0] ?? { user_id: undefined, email, username, user_name: name, image, minecraft_uuid: minecraftUuid });
   await db.end();
   res.json({ profile });
 }

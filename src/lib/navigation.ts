@@ -1,5 +1,6 @@
 export const gizmoNavItems = [
   { name: "Overview", href: "/dashboard", description: "World snapshot" },
+  { name: "World", href: "/world", description: "3D discovered Earth" },
   { name: "Players", href: "/players", description: "Tracked player cards" },
   { name: "Boards", href: "/leaderboards", description: "Rivalry and shame" },
   { name: "Tracking", href: "/tracking", description: "Everything collected" },

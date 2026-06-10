@@ -63,11 +63,12 @@ export function profileUpdateFromInput(input: EditableProfileInput) {
   const username = usernameSource ? normalizeUsername(usernameSource) : undefined;
   const name = cleanString(input.name, 80);
   const image = cleanProfileImageUrl(input.image);
+  const hasImage = Object.prototype.hasOwnProperty.call(input, "image");
   const minecraftUsername = normalizeMinecraftUsername(input.minecraftUsername);
   return {
     ...(username ? { username } : {}),
     ...(name ? { name } : {}),
-    image: image ?? null,
+    ...(hasImage ? { image: image ?? null } : {}),
     ...(minecraftUsername ? { minecraftUsername } : {}),
   };
 }

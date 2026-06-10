@@ -298,9 +298,10 @@ export async function updateUserProfile(userId: string, input: ProfileUpdate) {
 
 export async function updateUserProfileForEmail(email: string, input: ProfileUpdate, googleImage?: string | null) {
   const normalizedEmail = normalizeEmail(email);
-  const image = input.image ?? googleImage ?? null;
+  const hasImage = Object.prototype.hasOwnProperty.call(input, "image");
+  const image = hasImage ? (input.image ?? googleImage ?? null) : undefined;
   try {
-    return await bridgeUpdateUserProfile(normalizedEmail, { ...input, image }, googleImage);
+    return await bridgeUpdateUserProfile(normalizedEmail, { ...input, ...(hasImage ? { image } : {}) }, googleImage);
   } catch (bridgeError) {
     console.warn("Profile bridge update unavailable; trying direct profile database", bridgeError);
   }
@@ -313,7 +314,7 @@ export async function updateUserProfileForEmail(email: string, input: ProfileUpd
         where: { email: `minecraft:${minecraftUuid.toLowerCase()}@gizmocraft.local`, NOT: { id: profile.id } },
       }));
     }
-    return await withProfileDbTimeout(updateUserProfile(profile.id, { ...input, image, ...(minecraftUuid ? { minecraftUuid } : {}) }));
+    return await withProfileDbTimeout(updateUserProfile(profile.id, { ...input, ...(hasImage ? { image } : {}), ...(minecraftUuid ? { minecraftUuid } : {}) }));
   } catch (dbError) {
     console.warn("Profile database update unavailable; returning fallback profile", dbError);
     const fallback = fallbackUserProfile({ email: normalizedEmail, image: googleImage });
@@ -321,7 +322,7 @@ export async function updateUserProfileForEmail(email: string, input: ProfileUpd
       ...fallback,
       username: input.username ?? fallback.username,
       name: input.name ?? fallback.name,
-      image,
+      image: hasImage ? image : fallback.image,
       updatedAt: new Date(),
     };
   }
