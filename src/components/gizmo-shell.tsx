@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Activity, BarChart3, ClipboardList, Globe2, Settings, Trophy, UserRound, Users } from "lucide-react";
+import { Activity, BarChart3, Camera, ClipboardList, Globe2, Settings, Trophy, UserRound, Users } from "lucide-react";
 import { gizmoNavItems } from "@/lib/navigation";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { MinecraftScene } from "@/components/minecraft-scene";
 
-const icons = [BarChart3, Globe2, UserRound, Trophy, ClipboardList, Activity, Users, Settings];
+const icons = [BarChart3, Globe2, Camera, UserRound, Trophy, ClipboardList, Activity, Users, Settings];
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
 const APP_STATS_CACHE_KEY = "gizmocraft:last-app-stats";
 

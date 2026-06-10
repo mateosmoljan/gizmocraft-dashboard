@@ -1,6 +1,6 @@
 import express from "express";
 import os from "node:os";
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { pool } from "./mysql.js";
@@ -14,6 +14,7 @@ const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-s
 const worldName = process.env.MINECRAFT_WORLD_NAME ?? "gizmo-ivan-dole";
 const mapArtifactsDir = process.env.MINECRAFT_MAP_ARTIFACTS_DIR ?? `${serverRoot}/gizmocraft-map`;
 const mapManifestPath = process.env.MINECRAFT_MAP_MANIFEST ?? `${mapArtifactsDir}/manifest.json`;
+const screenshotsDir = process.env.MINECRAFT_SCREENSHOTS_DIR ?? `${serverRoot}/screenshots`;
 const execFileAsync = promisify(execFile);
 let activeSyncPromise = null;
 
@@ -159,6 +160,105 @@ async function writeServerProperties(updates) {
   }
   await writeFile(filePath, lines.join("\n"), "utf8");
   return readServerProperties();
+}
+const screenshotContentTypes = new Map([
+  ["png", "image/png"],
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["webp", "image/webp"],
+]);
+function screenshotId(fileName) {
+  return Buffer.from(fileName, "utf8").toString("base64url");
+}
+function screenshotNameFromId(id) {
+  const fileName = Buffer.from(String(id ?? ""), "base64url").toString("utf8");
+  if (!fileName || fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) return null;
+  return fileName;
+}
+function screenshotExtension(fileName) {
+  return String(fileName ?? "").split(".").pop()?.toLowerCase() ?? "";
+}
+function screenshotContentType(fileName) {
+  return screenshotContentTypes.get(screenshotExtension(fileName));
+}
+function inferScreenshotPlayer(fileName) {
+  const stem = String(fileName ?? "").replace(/\.[^.]+$/, "");
+  const uploaded = /^([A-Za-z0-9_]{1,16})-\d{4}-\d{2}-\d{2}T/.exec(stem);
+  if (uploaded) return uploaded[1];
+  const cleaned = stem
+    .replace(/^screenshot[-_ ]*/i, "")
+    .replace(/^\d{4}[-_]?\d{2}[-_]?\d{2}[T_ -]?\d{2}[._-]?\d{2}[._-]?\d{2}(?:[._-]?\d{1,6})?Z?[-_ ]*/i, "")
+    .replace(/[-_ ]*\d{4}[-_]?\d{2}[-_]?\d{2}[T_ -]?\d{2}[._-]?\d{2}[._-]?\d{2}(?:[._-]?\d{1,6})?Z?$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+  return cleaned ? cleaned.slice(0, 48) : null;
+}
+async function listScreenshots() {
+  await mkdir(screenshotsDir, { recursive: true });
+  const entries = await readdir(screenshotsDir);
+  const screenshots = [];
+  for (const fileName of entries) {
+    const contentType = screenshotContentType(fileName);
+    if (!contentType) continue;
+    const info = await stat(`${screenshotsDir}/${fileName}`).catch(() => null);
+    if (!info?.isFile()) continue;
+    const modifiedAt = info.mtime.toISOString();
+    screenshots.push({
+      id: screenshotId(fileName),
+      fileName,
+      player: inferScreenshotPlayer(fileName),
+      url: `/api/screenshots/${encodeURIComponent(screenshotId(fileName))}`,
+      sizeBytes: info.size,
+      capturedAt: modifiedAt,
+      modifiedAt,
+      contentType,
+    });
+  }
+  screenshots.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime() || a.fileName.localeCompare(b.fileName));
+  return screenshots.slice(0, 120);
+}
+async function handleScreenshots(_req, res) {
+  try {
+    const screenshots = await listScreenshots();
+    res.setHeader("cache-control", "no-store, max-age=0");
+    res.json({
+      live: true,
+      checkedAt: new Date().toISOString(),
+      source: screenshotsDir,
+      screenshots,
+      count: screenshots.length,
+      note: screenshots.length ? undefined : "No screenshots have reached the server inbox yet.",
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message ?? err) });
+  }
+}
+async function handleScreenshotImage(req, res) {
+  const fileName = screenshotNameFromId(req.params.id);
+  if (!fileName || !screenshotContentType(fileName)) return res.status(404).json({ error: "screenshot not found" });
+  res.setHeader("cache-control", "no-store, max-age=0");
+  res.type(screenshotContentType(fileName));
+  res.sendFile(fileName, { root: screenshotsDir }, (err) => {
+    if (err && !res.headersSent) res.status(err.statusCode || 404).json({ error: "screenshot not found" });
+  });
+}
+async function handleScreenshotUpload(req, res) {
+  try {
+    const contentType = String(req.headers["content-type"] ?? "").split(";")[0].toLowerCase();
+    const extension = contentType === "image/jpeg" ? "jpg" : contentType === "image/webp" ? "webp" : contentType === "image/png" ? "png" : null;
+    if (!extension) return res.status(415).json({ error: "Use image/png, image/jpeg, or image/webp" });
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "image body required" });
+    await mkdir(screenshotsDir, { recursive: true });
+    const player = normalizeMinecraftUsername(req.query.player) ?? "unknown";
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const random = Math.random().toString(36).slice(2, 8);
+    const fileName = `${player}-${stamp}-${random}.${extension}`;
+    await writeFile(`${screenshotsDir}/${fileName}`, req.body);
+    const screenshots = await listScreenshots();
+    res.status(201).json({ ok: true, screenshot: screenshots.find((shot) => shot.fileName === fileName) });
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message ?? err) });
+  }
 }
 function parseRegionFileName(fileName) {
   const match = /^r\.(-?\d+)\.(-?\d+)\.mca$/.exec(String(fileName ?? ""));
@@ -417,6 +517,12 @@ app.get("/api/server-settings", handleServerSettings);
 app.get("/server-settings", handleServerSettings);
 app.put("/api/server-settings", handleUpdateServerSettings);
 app.put("/server-settings", handleUpdateServerSettings);
+app.get("/api/screenshots", handleScreenshots);
+app.get("/screenshots", handleScreenshots);
+app.get("/api/screenshots/:id", handleScreenshotImage);
+app.get("/screenshots/:id", handleScreenshotImage);
+app.post("/api/screenshots/upload", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "15mb" }), handleScreenshotUpload);
+app.post("/screenshots/upload", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "15mb" }), handleScreenshotUpload);
 app.get("/api/world-map", handleWorldMap);
 app.get("/world-map", handleWorldMap);
 
