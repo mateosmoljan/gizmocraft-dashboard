@@ -69,6 +69,9 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
 
   const newest = feed.screenshots[0] ?? null;
   const players = useMemo(() => new Set(feed.screenshots.map((shot) => shot.player).filter(Boolean)).size, [feed.screenshots]);
+  const helperPlayer = /^[A-Za-z0-9_]{1,16}$/.test(uploadPlayer.trim()) ? uploadPlayer.trim() : "PlayerName";
+  const helperUrl = `/api/screenshots/sync-helper?player=${encodeURIComponent(helperPlayer)}`;
+  const helperCommand = `powershell -ExecutionPolicy Bypass -File .\\gizmocraft-screenshot-sync-${helperPlayer}.ps1`;
 
   async function submitUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -175,6 +178,18 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
           </button>
         </form>
         {uploadStatus ? <p className="mt-3 text-sm font-bold text-emerald-100">{uploadStatus}</p> : null}
+        <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+          <p className="text-sm font-black text-white">Auto-track this player&apos;s future screenshots</p>
+          <p className="mt-1 text-xs text-slate-400">
+            Type their Minecraft name above, download the helper, then have them run it on their PC while playing. It watches their local <code className="rounded bg-black/30 px-1">.minecraft/screenshots</code> folder and uploads new screenshots automatically.
+          </p>
+          <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center">
+            <a href={helperUrl} className="inline-flex justify-center rounded-2xl border border-emerald-200/30 bg-emerald-200/10 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-200/20">
+              Download Windows sync helper
+            </a>
+            <code className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-slate-200">{helperCommand}</code>
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
