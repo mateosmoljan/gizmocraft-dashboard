@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Camera, RefreshCw, Radio, UploadCloud } from "lucide-react";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import type { ScreenshotFeed, PlayerScreenshot } from "@/lib/screenshots";
@@ -24,6 +24,10 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
   const [feed, setFeed] = useState(initialFeed);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(initialFeed.error ?? null);
+  const [uploadPlayer, setUploadPlayer] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialFeed.live) {
@@ -66,6 +70,42 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
   const newest = feed.screenshots[0] ?? null;
   const players = useMemo(() => new Set(feed.screenshots.map((shot) => shot.player).filter(Boolean)).size, [feed.screenshots]);
 
+  async function submitUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setUploadStatus(null);
+    setError(null);
+    const player = uploadPlayer.trim();
+    if (!/^[A-Za-z0-9_]{1,16}$/.test(player)) {
+      setUploadStatus("Enter the exact Minecraft player name first.");
+      return;
+    }
+    if (!uploadFile) {
+      setUploadStatus("Choose a screenshot image first.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.set("player", player);
+      form.set("screenshot", uploadFile);
+      const res = await fetch("/api/screenshots/upload", { method: "POST", body: form });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `upload returned ${res.status}`);
+      setUploadStatus("Uploaded. It will appear in the live gallery now.");
+      setUploadFile(null);
+      const next = await fetch(`/api/screenshots?ts=${Date.now()}`, { cache: "no-store" });
+      if (next.ok) {
+        const nextFeed = await next.json();
+        setFeed(nextFeed);
+        writeClientCache(CACHE_KEY, nextFeed);
+      }
+    } catch (err) {
+      setUploadStatus(err instanceof Error ? err.message : "Screenshot upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-3xl border border-emerald-300/20 bg-white/8 p-6 shadow-2xl shadow-black/30 backdrop-blur">
@@ -94,6 +134,48 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
           {error ? <p className="mt-2 text-sm text-amber-100/80">{error}</p> : null}
         </section>
       ) : null}
+
+      <section className="rounded-3xl border border-emerald-300/20 bg-emerald-300/8 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-emerald-200/80">Add every player</p>
+            <h2 className="mt-1 text-2xl font-black text-white">Upload a Minecraft screenshot</h2>
+            <p className="mt-2 max-w-3xl text-sm text-slate-300">
+              Any player can add their own client screenshots here. Vanilla Minecraft saves screenshots on each player&apos;s computer, so they appear for everyone after upload or client sync.
+            </p>
+          </div>
+        </div>
+        <form onSubmit={submitUpload} className="mt-5 grid gap-3 lg:grid-cols-[minmax(180px,240px)_1fr_auto] lg:items-end">
+          <label className="block">
+            <span className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-100/80">Player</span>
+            <input
+              value={uploadPlayer}
+              onChange={(event) => setUploadPlayer(event.target.value)}
+              placeholder="Minecraft name"
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-bold text-white outline-none transition focus:border-emerald-200"
+              maxLength={16}
+              autoComplete="nickname"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-100/80">Screenshot file</span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-slate-200 file:mr-4 file:rounded-full file:border-0 file:bg-emerald-300 file:px-4 file:py-2 file:text-xs file:font-black file:text-slate-950"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={uploading}
+            className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {uploading ? "Uploading…" : "Upload"}
+          </button>
+        </form>
+        {uploadStatus ? <p className="mt-3 text-sm font-bold text-emerald-100">{uploadStatus}</p> : null}
+      </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         <StatCard icon={<Camera className="h-5 w-5" />} label="Screenshots" value={String(feed.count)} detail="Newest first" />
