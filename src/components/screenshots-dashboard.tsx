@@ -2,13 +2,15 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Camera, RefreshCw, Radio, UploadCloud } from "lucide-react";
+import { Camera, RefreshCw, Radio, UploadCloud, X } from "lucide-react";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import type { ScreenshotFeed, PlayerScreenshot } from "@/lib/screenshots";
 import { formatZagrebTime } from "@/lib/time";
 
 const CACHE_KEY = "gizmocraft:last-screenshot-feed";
 const POLL_MS = 3_000;
+const INITIAL_VISIBLE_SCREENSHOTS = 6;
+const LOAD_MORE_SCREENSHOTS = 6;
 
 function imageUrl(image: PlayerScreenshot) {
   return `/api/screenshots/${encodeURIComponent(image.id)}?v=${encodeURIComponent(image.modifiedAt)}`;
@@ -36,6 +38,8 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_SCREENSHOTS);
+  const [selectedShot, setSelectedShot] = useState<PlayerScreenshot | null>(null);
 
   useEffect(() => {
     if (initialFeed.live) {
@@ -75,7 +79,27 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
     };
   }, []);
 
+  useEffect(() => {
+    setVisibleCount((current) => Math.min(Math.max(current, INITIAL_VISIBLE_SCREENSHOTS), Math.max(feed.screenshots.length - 1, INITIAL_VISIBLE_SCREENSHOTS)));
+  }, [feed.screenshots.length]);
+
+  useEffect(() => {
+    if (!selectedShot) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSelectedShot(null);
+    }
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectedShot]);
+
   const newest = feed.screenshots[0] ?? null;
+  const galleryShots = feed.screenshots.slice(1);
+  const visibleShots = galleryShots.slice(0, visibleCount);
+  const remainingShots = Math.max(galleryShots.length - visibleShots.length, 0);
   const players = useMemo(() => new Set(feed.screenshots.map((shot) => shot.player).filter(Boolean)).size, [feed.screenshots]);
   const helperPlayer = /^[A-Za-z0-9_]{1,16}$/.test(uploadPlayer.trim()) ? uploadPlayer.trim() : "PlayerName";
   const helperUrl = `/api/screenshots/sync-helper?player=${encodeURIComponent(helperPlayer)}`;
@@ -215,25 +239,39 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
             </div>
             <p className="rounded-full bg-cyan-300 px-3 py-1 text-xs font-black text-slate-950">{formatZagrebTime(newest.capturedAt)}</p>
           </div>
-          <OptimizedScreenshot
-            shot={newest}
-            alt={`Latest Minecraft screenshot by ${newest.player ?? "a player"}`}
-            className="max-h-[70vh] w-full rounded-2xl border border-white/10 object-contain shadow-2xl shadow-black/40"
-            sizes="(min-width: 1280px) 1180px, (min-width: 768px) 92vw, 100vw"
-            priority
-          />
+          <button
+            type="button"
+            onClick={() => setSelectedShot(newest)}
+            className="block w-full rounded-2xl text-left focus:outline-none focus:ring-2 focus:ring-cyan-200/80"
+            aria-label={`Open latest screenshot by ${newest.player ?? "a player"}`}
+          >
+            <OptimizedScreenshot
+              shot={newest}
+              alt={`Latest Minecraft screenshot by ${newest.player ?? "a player"}`}
+              className="max-h-[70vh] w-full rounded-2xl border border-white/10 object-contain shadow-2xl shadow-black/40"
+              sizes="(min-width: 1280px) 1180px, (min-width: 768px) 92vw, 100vw"
+              priority
+            />
+          </button>
         </section>
       ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {feed.screenshots.length ? feed.screenshots.map((shot) => (
+        {feed.screenshots.length ? visibleShots.map((shot) => (
           <article key={shot.id} className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 shadow-xl shadow-black/20">
-            <OptimizedScreenshot
-              shot={shot}
-              alt={`Minecraft screenshot ${shot.fileName}`}
-              className="aspect-video w-full bg-slate-900 object-cover"
-              sizes="(min-width: 1280px) 31vw, (min-width: 640px) 50vw, 100vw"
-            />
+            <button
+              type="button"
+              onClick={() => setSelectedShot(shot)}
+              className="block w-full text-left focus:outline-none focus:ring-2 focus:ring-emerald-200/80"
+              aria-label={`Open screenshot ${shot.fileName}`}
+            >
+              <OptimizedScreenshot
+                shot={shot}
+                alt={`Minecraft screenshot ${shot.fileName}`}
+                className="aspect-video w-full bg-slate-900 object-cover transition duration-200 hover:scale-[1.02]"
+                sizes="(min-width: 1280px) 31vw, (min-width: 640px) 50vw, 100vw"
+              />
+            </button>
             <div className="space-y-2 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -255,6 +293,63 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
           </div>
         )}
       </section>
+
+      {remainingShots > 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-3xl border border-white/10 bg-white/5 p-5 text-center">
+          <p className="text-sm text-slate-300">
+            Showing {visibleShots.length} older screenshots. {remainingShots} more are waiting, but not loaded yet.
+          </p>
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + LOAD_MORE_SCREENSHOTS)}
+            className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-black/20 transition hover:bg-emerald-100"
+          >
+            Load {Math.min(LOAD_MORE_SCREENSHOTS, remainingShots)} more screenshots
+          </button>
+        </div>
+      ) : null}
+
+      {selectedShot ? <ScreenshotLightbox shot={selectedShot} onClose={() => setSelectedShot(null)} /> : null}
+    </div>
+  );
+}
+
+function ScreenshotLightbox({ shot, onClose }: { shot: PlayerScreenshot; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-3 backdrop-blur-md md:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Screenshot preview ${shot.fileName}`}
+      onClick={onClose}
+    >
+      <div className="relative max-h-full w-full max-w-7xl overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/60" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-200/80">Screenshot preview</p>
+            <h2 className="mt-1 truncate text-xl font-black text-white">{shot.player ?? "Unknown player"}</h2>
+            <p className="truncate text-xs text-slate-400">{shot.fileName} · {formatBytes(shot.sizeBytes)} · {formatZagrebTime(shot.capturedAt)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-white/10 bg-white/10 p-2 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-200/80"
+            aria-label="Close screenshot preview"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="max-h-[82vh] overflow-auto bg-black/40 p-3 md:p-5">
+          <OptimizedScreenshot
+            shot={shot}
+            alt={`Full size Minecraft screenshot ${shot.fileName}`}
+            className="mx-auto max-h-[78vh] w-auto max-w-full rounded-2xl object-contain"
+            sizes="100vw"
+            priority
+            quality={88}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -265,12 +360,14 @@ function OptimizedScreenshot({
   className,
   sizes,
   priority = false,
+  quality,
 }: {
   shot: PlayerScreenshot;
   alt: string;
   className: string;
   sizes: string;
   priority?: boolean;
+  quality?: number;
 }) {
   const { width, height } = imageDimensions(shot);
   const blurSvg = encodeURIComponent(
@@ -284,7 +381,7 @@ function OptimizedScreenshot({
       width={width}
       height={height}
       sizes={sizes}
-      quality={priority ? 82 : 68}
+      quality={quality ?? (priority ? 82 : 68)}
       placeholder="blur"
       blurDataURL={`data:image/svg+xml;charset=utf-8,${blurSvg}`}
       priority={priority}
