@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Camera, RefreshCw, Radio, UploadCloud } from "lucide-react";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
@@ -11,6 +12,13 @@ const POLL_MS = 3_000;
 
 function imageUrl(image: PlayerScreenshot) {
   return `/api/screenshots/${encodeURIComponent(image.id)}?v=${encodeURIComponent(image.modifiedAt)}`;
+}
+
+function imageDimensions(image: PlayerScreenshot) {
+  return {
+    width: image.width && image.width > 0 ? image.width : 1920,
+    height: image.height && image.height > 0 ? image.height : 1080,
+  };
 }
 
 function formatBytes(bytes: number) {
@@ -207,14 +215,25 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
             </div>
             <p className="rounded-full bg-cyan-300 px-3 py-1 text-xs font-black text-slate-950">{formatZagrebTime(newest.capturedAt)}</p>
           </div>
-          <img src={imageUrl(newest)} alt={`Latest Minecraft screenshot by ${newest.player ?? "a player"}`} className="max-h-[70vh] w-full rounded-2xl border border-white/10 object-contain shadow-2xl shadow-black/40" />
+          <OptimizedScreenshot
+            shot={newest}
+            alt={`Latest Minecraft screenshot by ${newest.player ?? "a player"}`}
+            className="max-h-[70vh] w-full rounded-2xl border border-white/10 object-contain shadow-2xl shadow-black/40"
+            sizes="(min-width: 1280px) 1180px, (min-width: 768px) 92vw, 100vw"
+            priority
+          />
         </section>
       ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {feed.screenshots.length ? feed.screenshots.map((shot) => (
           <article key={shot.id} className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 shadow-xl shadow-black/20">
-            <img src={imageUrl(shot)} alt={`Minecraft screenshot ${shot.fileName}`} loading="lazy" className="aspect-video w-full bg-slate-900 object-cover" />
+            <OptimizedScreenshot
+              shot={shot}
+              alt={`Minecraft screenshot ${shot.fileName}`}
+              className="aspect-video w-full bg-slate-900 object-cover"
+              sizes="(min-width: 1280px) 31vw, (min-width: 640px) 50vw, 100vw"
+            />
             <div className="space-y-2 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -237,6 +256,42 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
         )}
       </section>
     </div>
+  );
+}
+
+function OptimizedScreenshot({
+  shot,
+  alt,
+  className,
+  sizes,
+  priority = false,
+}: {
+  shot: PlayerScreenshot;
+  alt: string;
+  className: string;
+  sizes: string;
+  priority?: boolean;
+}) {
+  const { width, height } = imageDimensions(shot);
+  const blurSvg = encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 18"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#0f172a"/><stop offset="0.55" stop-color="#14532d"/><stop offset="1" stop-color="#083344"/></linearGradient></defs><rect width="32" height="18" fill="url(#g)"/><filter id="b"><feGaussianBlur stdDeviation="2"/></filter><g filter="url(#b)" opacity=".72"><circle cx="8" cy="5" r="6" fill="#22c55e"/><circle cx="24" cy="12" r="8" fill="#38bdf8"/><rect x="10" y="9" width="14" height="6" rx="2" fill="#fde68a"/></g></svg>`,
+  );
+
+  return (
+    <Image
+      src={imageUrl(shot)}
+      alt={alt}
+      width={width}
+      height={height}
+      sizes={sizes}
+      quality={priority ? 82 : 68}
+      placeholder="blur"
+      blurDataURL={`data:image/svg+xml;charset=utf-8,${blurSvg}`}
+      priority={priority}
+      loading={priority ? undefined : "lazy"}
+      decoding="async"
+      className={className}
+    />
   );
 }
 
