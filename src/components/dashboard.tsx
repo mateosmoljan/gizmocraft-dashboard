@@ -12,7 +12,7 @@ function format(value: number) { return new Intl.NumberFormat("en").format(value
 
 type DashboardView = "overview" | "players" | "boards" | "tracking";
 type DashboardData = { players: DashboardPlayer[]; worldStats: DashboardWorld; boards: typeof fallbackBoards; live: boolean };
-const DASHBOARD_CACHE_KEY = "gizmocraft:last-dashboard-data";
+const DASHBOARD_CACHE_KEY = "gizmocraft:last-dashboard-data:v2-live-status";
 const initialDashboardData = (): DashboardData => ({ players: fallbackPlayers, worldStats: fallbackWorldStats, boards: fallbackBoards, live: false });
 
 function formatBoardValue(value: number, suffix: string) {
@@ -104,7 +104,7 @@ function Hero({ worldStats, live, view, refreshing, failed, onRefresh }: { world
 function OverviewSection({ players, worldStats, live, refreshing }: { players: DashboardPlayer[]; worldStats: DashboardWorld; live: boolean; refreshing: boolean }) {
   const top = players[0] ?? null;
   const statCards = [
-    ["Online", `${worldStats.playersOnline}/${worldStats.maxPlayers}`],
+    ["Online", live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable"],
     ["Top score", top ? format(top.score) : null],
     ["Last sync", worldStats.lastSync],
     ["Mode", refreshing ? null : live ? "Live · 30s refresh" : "Last loaded data"],
