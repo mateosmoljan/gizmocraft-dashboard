@@ -17,6 +17,16 @@ test("GizmoCraft exposes installable PWA metadata", () => {
   assert.match(layout, /appleWebApp/);
   assert.match(layout, /ServiceWorkerRegistration/);
 
+  const shell = readFileSync("src/components/gizmo-shell.tsx", "utf8");
+  assert.match(shell, /InstallAppButton/);
+
+  const installButton = readFileSync("src/components/install-app-button.tsx", "utf8");
+  assert.match(installButton, /beforeinstallprompt/);
+  assert.match(installButton, /appinstalled/);
+  assert.match(installButton, /display-mode: standalone/);
+  assert.match(installButton, /iphone\|ipad\|ipod/);
+  assert.match(installButton, /if \(installed \|\| \(!installPrompt && !showIosInstallHelp\)\) return null/);
+
   const sw = readFileSync("public/sw.js", "utf8");
   assert.match(sw, /self\.addEventListener\("install"/);
   assert.match(sw, /self\.addEventListener\("fetch"/);

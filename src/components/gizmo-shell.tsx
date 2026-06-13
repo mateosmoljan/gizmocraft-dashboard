@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Activity, BarChart3, Camera, ClipboardList, Globe2, Settings, Trophy, UserRound, Users } from "lucide-react";
 import { gizmoNavItems } from "@/lib/navigation";
+import { InstallAppButton } from "@/components/install-app-button";
 import { MinecraftScene } from "@/components/minecraft-scene";
 
 const icons = [BarChart3, Globe2, Camera, UserRound, Trophy, ClipboardList, Activity, Users, Settings];
@@ -80,6 +81,8 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
             <p className="mt-2 font-black">Gizmo Ivan — Dole</p>
             <p className="mt-1 text-sm text-slate-400">Hard survival · live bridge</p>
           </div>
+
+          <InstallAppButton />
 
           <div className="mt-4 rounded-3xl border border-emerald-300/20 bg-emerald-300/8 p-4 lg:mt-auto">
             <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/70">App users</p>
