@@ -1,5 +1,6 @@
 import express from "express";
 import os from "node:os";
+import net from "node:net";
 import { readFile, readdir, stat, writeFile, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -358,9 +359,117 @@ async function handleWorldMap(_req, res) {
     res.status(500).json({ error: String(err?.message ?? err) });
   }
 }
+function writeVarInt(value) {
+  const bytes = [];
+  let number = Number(value);
+  do {
+    let temp = number & 0x7f;
+    number >>>= 7;
+    if (number !== 0) temp |= 0x80;
+    bytes.push(temp);
+  } while (number !== 0);
+  return Buffer.from(bytes);
+}
+function readVarIntFromBuffer(buffer, offset = 0) {
+  let value = 0;
+  let shift = 0;
+  let cursor = offset;
+  while (cursor < buffer.length) {
+    const byte = buffer[cursor++];
+    value |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) return { value, offset: cursor };
+    shift += 7;
+    if (shift > 35) throw new Error("VarInt too large");
+  }
+  return null;
+}
+function makePacket(id, payload = Buffer.alloc(0)) {
+  const body = Buffer.concat([writeVarInt(id), payload]);
+  return Buffer.concat([writeVarInt(body.length), body]);
+}
+function readPacket(socket, timeoutMs = 2500) {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0);
+    const timeout = setTimeout(() => { cleanup(); reject(new Error("minecraft status timeout")); }, timeoutMs);
+    function cleanup() {
+      clearTimeout(timeout);
+      socket.off("data", onData);
+      socket.off("error", onError);
+      socket.off("end", onEnd);
+    }
+    function onError(error) { cleanup(); reject(error); }
+    function onEnd() { cleanup(); reject(new Error("minecraft status socket ended")); }
+    function onData(chunk) {
+      buffer = Buffer.concat([buffer, chunk]);
+      const length = readVarIntFromBuffer(buffer, 0);
+      if (!length) return;
+      const packetEnd = length.offset + length.value;
+      if (buffer.length < packetEnd) return;
+      cleanup();
+      resolve(buffer.subarray(length.offset, packetEnd));
+    }
+    socket.on("data", onData);
+    socket.on("error", onError);
+    socket.on("end", onEnd);
+  });
+}
+async function readOnlinePlayersFromServerStatus() {
+  const properties = await readServerProperties();
+  const host = process.env.MINECRAFT_STATUS_HOST ?? "127.0.0.1";
+  const port = Number(process.env.MINECRAFT_STATUS_PORT ?? properties["server-port"] ?? 25565);
+  const protocol = Number(process.env.MINECRAFT_STATUS_PROTOCOL ?? 775);
+  const socket = net.createConnection({ host, port });
+  try {
+    await new Promise((resolve, reject) => {
+      socket.once("connect", resolve);
+      socket.once("error", reject);
+      socket.setTimeout(2500, () => reject(new Error("minecraft status connect timeout")));
+    });
+    const hostBuffer = Buffer.from(host);
+    const handshake = Buffer.concat([
+      writeVarInt(protocol),
+      writeVarInt(hostBuffer.length),
+      hostBuffer,
+      Buffer.from([(port >> 8) & 0xff, port & 0xff]),
+      writeVarInt(1),
+    ]);
+    socket.write(makePacket(0, handshake));
+    socket.write(makePacket(0));
+    const packet = await readPacket(socket);
+    const id = readVarIntFromBuffer(packet, 0);
+    if (!id || id.value !== 0) throw new Error("unexpected minecraft status packet");
+    const length = readVarIntFromBuffer(packet, id.offset);
+    if (!length) throw new Error("missing minecraft status payload");
+    const json = packet.subarray(length.offset, length.offset + length.value).toString("utf8");
+    const status = JSON.parse(json);
+    const players = status?.players ?? {};
+    return {
+      online: Number(players.online ?? 0),
+      max: Number(players.max ?? properties["max-players"] ?? 0),
+      names: Array.isArray(players.sample) ? players.sample.map((player) => player?.name).filter(Boolean).sort((a, b) => a.localeCompare(b)) : [],
+      live: true,
+    };
+  } finally {
+    socket.destroy();
+  }
+}
 async function readOnlinePlayersFromLatestLog() {
-  const open = await readOpenSessionsFromLatestLog();
-  return [...open.keys()].sort((a, b) => a.localeCompare(b));
+  try {
+    const status = await readOnlinePlayersFromServerStatus();
+    return status.names;
+  } catch {
+    const open = await readOpenSessionsFromLatestLog();
+    return [...open.keys()].sort((a, b) => a.localeCompare(b));
+  }
+}
+async function readLivePlayerStatus() {
+  try {
+    return await readOnlinePlayersFromServerStatus();
+  } catch {
+    const open = await readOpenSessionsFromLatestLog();
+    const properties = await readServerProperties();
+    return { online: open.size, max: Number(properties["max-players"] ?? 10), names: [...open.keys()].sort((a, b) => a.localeCompare(b)), live: false };
+  }
 }
 async function readOpenSessionsFromLatestLog() {
   const open = new Map();
@@ -433,13 +542,14 @@ async function minecraftUsage() {
   if (!pid || pid === "0") pid = (await runCommand("pgrep", ["-f", "java.*(minecraft|gizmo|server)"]))?.split("\n")[0] ?? "";
   const rssKb = pid ? Number(await runCommand("ps", ["-o", "rss=", "-p", pid])) : 0;
   const uptime = pid ? await runCommand("ps", ["-o", "etime=", "-p", pid]) : "";
-  const onlinePlayers = await readOnlinePlayersFromLatestLog();
+  const livePlayers = await readLivePlayerStatus();
   return {
     status: pid ? "running" : "unknown",
     process: pid ? `pid ${pid}${service ? ` · ${service}` : ""}` : "not found",
     uptime: uptime || undefined,
-    playersOnline: onlinePlayers.length,
-    onlinePlayers,
+    playersOnline: livePlayers.online,
+    onlinePlayers: livePlayers.names,
+    onlineSource: livePlayers.live ? "server-status" : "latest-log-fallback",
     memory: {
       used: humanBytes(rssKb * 1024),
       percent: os.totalmem() > 0 && rssKb > 0 ? Math.round(((rssKb * 1024) / os.totalmem()) * 1000) / 10 : null,
@@ -544,18 +654,19 @@ async function handleLeaderboards(_req, res) {
   const [syncRows] = await db.query("SELECT finished_at,status FROM sync_runs WHERE status='ok' ORDER BY id DESC LIMIT 1");
   await db.end();
   const players = rows.map(toPlayer);
-  const [onlinePlayers, properties] = await Promise.all([readOnlinePlayersFromLatestLog(), readServerProperties()]);
+  const [livePlayers, properties] = await Promise.all([readLivePlayerStatus(), readServerProperties()]);
   res.json({
     world: {
       name: "Gizmo Ivan — Dole",
       difficulty: "Hard Survival",
       trackedPlayers: players.length,
-      playersOnline: onlinePlayers.length,
-      onlinePlayers,
-      maxPlayers: Number(properties["max-players"] ?? 10),
+      playersOnline: livePlayers.online,
+      onlinePlayers: livePlayers.names,
+      onlineSource: livePlayers.live ? "server-status" : "latest-log-fallback",
+      maxPlayers: livePlayers.max || Number(properties["max-players"] ?? 10),
       lastSync: syncRows[0]?.finished_at ?? null,
     },
-    players: players.map((player) => ({ ...player, online: onlinePlayers.includes(player.name) })),
+    players: players.map((player) => ({ ...player, online: livePlayers.names.includes(player.name) })),
   });
 }
 app.get("/api/leaderboards", handleLeaderboards);
@@ -563,7 +674,7 @@ app.get("/leaderboards", handleLeaderboards);
 
 async function readAppStats(db) {
   const onlineSince = new Date(Date.now() - APP_ONLINE_WINDOW_MS);
-  const signedInWhere = "COALESCE(sign_in_count,0)>0";
+  const signedInWhere = "COALESCE(sign_in_count,0)>0 AND email NOT LIKE 'minecraft:%@gizmocraft.local'";
   const [onlineRows] = await db.query(`SELECT COUNT(*) online FROM users WHERE ${signedInWhere} AND app_last_seen_at >= ?`, [onlineSince]);
   const [totalRows] = await db.query(`SELECT COUNT(*) total_signed_in FROM users WHERE ${signedInWhere}`);
   return { online: Number(onlineRows[0]?.online ?? 0), totalSignedIn: Number(totalRows[0]?.total_signed_in ?? 0), live: true };
@@ -597,15 +708,11 @@ async function handleAppActivity(req, res) {
   if (!email) return res.status(400).json({ error: "email required" });
   try {
     const db = await pool();
-    const username = normalizeUsername(req.body?.username ?? email.split("@")[0]);
-    const name = String(req.body?.name ?? username).trim().slice(0, 191) || username;
-    await db.query(
-      `INSERT INTO users (id,email,username,name,role,app_last_seen_at,last_login_at,sign_in_count,created_at,updated_at)
-       VALUES (UUID(),?,?,?,'PLAYER',NOW(3),NOW(3),1,NOW(3),NOW(3))
-       ON DUPLICATE KEY UPDATE app_last_seen_at=NOW(3), last_login_at=COALESCE(last_login_at,NOW(3)), sign_in_count=GREATEST(sign_in_count,1), updated_at=NOW(3)`,
-      [email, username, name],
-    );
-    await recordAppEvent(db, email, "heartbeat", req.body?.path ?? null, { source: "app-activity" });
+    const [existingRows] = await db.query("SELECT id,COALESCE(sign_in_count,0) sign_in_count FROM users WHERE email=? LIMIT 1", [email]);
+    if (existingRows[0]?.sign_in_count > 0) {
+      await db.query("UPDATE users SET app_last_seen_at=NOW(3), updated_at=NOW(3) WHERE email=?", [email]);
+      await recordAppEvent(db, email, "heartbeat", req.body?.path ?? null, { source: "app-activity" });
+    }
     const stats = await readAppStats(db);
     await db.end();
     res.json({ stats });
@@ -762,6 +869,7 @@ async function handleProfileForEmail(req, res) {
 
 async function handleUpdateProfile(req, res) {
   const email = normalizeEmail(req.body?.email);
+  const recordSignIn = req.body?.recordSignIn === true;
   if (!email) return res.status(400).json({ error: "email required" });
   const username = normalizeUsername(req.body?.username ?? email.split("@")[0]);
   const name = String(req.body?.name ?? username).trim().slice(0, 191) || username;
@@ -778,16 +886,20 @@ async function handleUpdateProfile(req, res) {
   const syntheticEmail = minecraftUuid ? playerOnlyProfileEmail(minecraftUuid) : null;
   if (existingRows[0]) {
     if (syntheticEmail && syntheticEmail !== email) await db.query("DELETE FROM users WHERE email=?", [syntheticEmail]);
-    await db.query("UPDATE users SET username=?,name=?,image=COALESCE(?,image),minecraft_uuid=COALESCE(?,minecraft_uuid),updated_at=NOW(3) WHERE email=?", [username, name, image, minecraftUuid, email]);
+    await db.query(`UPDATE users SET username=?,name=?,image=COALESCE(?,image),minecraft_uuid=COALESCE(?,minecraft_uuid),
+      last_login_at=IF(?,NOW(3),last_login_at), sign_in_count=IF(?,COALESCE(sign_in_count,0)+1,sign_in_count), updated_at=NOW(3) WHERE email=?`,
+      [username, name, image, minecraftUuid, recordSignIn, recordSignIn, email]);
   } else if (syntheticEmail) {
     const [syntheticRows] = await db.query("SELECT id FROM users WHERE email=? LIMIT 1", [syntheticEmail]);
     if (syntheticRows[0]) {
-      await db.query("UPDATE users SET email=?,username=?,name=?,image=COALESCE(?,image),updated_at=NOW(3) WHERE id=?", [email, username, name, image, syntheticRows[0].id]);
+      await db.query(`UPDATE users SET email=?,username=?,name=?,image=COALESCE(?,image),
+        last_login_at=IF(?,NOW(3),last_login_at), sign_in_count=IF(?,COALESCE(sign_in_count,0)+1,sign_in_count), updated_at=NOW(3) WHERE id=?`,
+        [email, username, name, image, recordSignIn, recordSignIn, syntheticRows[0].id]);
     } else {
-      await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image ?? null, minecraftUuid]);
+      await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,last_login_at,sign_in_count,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',IF(?,NOW(3),NULL),?,NOW(3),NOW(3))", [email, username, name, image ?? null, minecraftUuid, recordSignIn, recordSignIn ? 1 : 0]);
     }
   } else {
-    await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',NOW(3),NOW(3))", [email, username, name, image ?? null, minecraftUuid]);
+    await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,last_login_at,sign_in_count,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',IF(?,NOW(3),NULL),?,NOW(3),NOW(3))", [email, username, name, image ?? null, minecraftUuid, recordSignIn, recordSignIn ? 1 : 0]);
   }
   const [rows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
       u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid

@@ -5,17 +5,16 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Activity, BarChart3, Camera, ClipboardList, Globe2, Settings, Trophy, UserRound, Users } from "lucide-react";
 import { gizmoNavItems } from "@/lib/navigation";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { MinecraftScene } from "@/components/minecraft-scene";
 
 const icons = [BarChart3, Globe2, Camera, UserRound, Trophy, ClipboardList, Activity, Users, Settings];
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
-const APP_STATS_CACHE_KEY = "gizmocraft:last-app-stats";
+type AppStatsState = AppStats | null;
 
 export function GizmoShell({ children }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
-  const [appStats, setAppStats] = useState<AppStats>({ online: 1, totalSignedIn: 1, live: false });
+  const [appStats, setAppStats] = useState<AppStatsState>(null);
 
   useEffect(() => {
     setPendingHref(null);
@@ -23,15 +22,15 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
 
   useEffect(() => {
     let cancelled = false;
-    const cached = readClientCache<AppStats>(APP_STATS_CACHE_KEY);
-    if (cached) setAppStats(cached);
     async function loadAppStats() {
       const res = await fetch("/api/app-stats", { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (!cancelled) setAppStats(null);
+        return;
+      }
       const data = await res.json();
       if (!cancelled) {
-        setAppStats(data.stats);
-        writeClientCache(APP_STATS_CACHE_KEY, data.stats);
+        setAppStats(data.stats?.live ? data.stats : null);
       }
     }
     void loadAppStats();
@@ -86,15 +85,15 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
             <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/70">App users</p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-2xl font-black text-white">{appStats.online}</p>
-                <p className="text-xs text-slate-400">online now</p>
+                <p className="text-2xl font-black text-white">{appStats ? appStats.online : "—"}</p>
+                <p className="text-xs text-slate-400">active last 5 min</p>
               </div>
               <div>
-                <p className="text-2xl font-black text-white">{appStats.totalSignedIn}</p>
+                <p className="text-2xl font-black text-white">{appStats ? appStats.totalSignedIn : "—"}</p>
                 <p className="text-xs text-slate-400">Google users total</p>
               </div>
             </div>
-            <p className="mt-3 text-[11px] text-slate-500">{!appStats.live ? "Showing last loaded app activity." : "App activity only, not Minecraft players."}</p>
+            <p className="mt-3 text-[11px] text-slate-500">{appStats ? "Live app activity only, not Minecraft players." : "Live app activity unavailable."}</p>
           </div>
         </aside>
 

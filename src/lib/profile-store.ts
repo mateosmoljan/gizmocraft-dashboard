@@ -5,7 +5,7 @@ import { normalizeEmail, normalizeMinecraftUsername, usernameFromEmail } from "@
 import { notifyNewUserSignup } from "@/lib/signup-notifications";
 
 const PROFILE_DB_TIMEOUT_MS = 900;
-type ProfileUpdate = { username?: string; name?: string; image?: string | null; minecraftUsername?: string; minecraftUuid?: string };
+type ProfileUpdate = { username?: string; name?: string; image?: string | null; minecraftUsername?: string; minecraftUuid?: string; recordSignIn?: boolean };
 export type AppUserStats = { online: number; totalSignedIn: number; live: boolean };
 const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -121,9 +121,10 @@ async function databaseTouchAppActivity(email: string) {
   const now = new Date();
   await withProfileDbTimeout(prisma.user.update({ where: { email: normalizeEmail(email) }, data: { appLastSeenAt: now } }));
   const onlineSince = new Date(Date.now() - APP_ONLINE_WINDOW_MS);
+  const signedInUserWhere = { signInCount: { gt: 0 }, NOT: { email: { startsWith: "minecraft:" } } };
   const [online, totalSignedIn] = await withProfileDbTimeout(Promise.all([
-    prisma.user.count({ where: { appLastSeenAt: { gte: onlineSince } } }),
-    prisma.user.count({ where: { signInCount: { gt: 0 } } }),
+    prisma.user.count({ where: { ...signedInUserWhere, appLastSeenAt: { gte: onlineSince } } }),
+    prisma.user.count({ where: signedInUserWhere }),
   ]));
   return { online, totalSignedIn, live: true };
 }
@@ -140,7 +141,7 @@ export async function touchAndReadAppUserStats(input: string | { email: string; 
     return await databaseTouchAppActivity(payload.email);
   } catch (dbError) {
     console.warn("App stats database unavailable", dbError);
-    return { online: 1, totalSignedIn: 1, live: false };
+    return { online: 0, totalSignedIn: 0, live: false };
   }
 }
 
@@ -268,8 +269,7 @@ export async function recordOrFallbackUserSignIn(input: { email: string; name?: 
   } catch (error) {
     console.warn("Profile database unavailable; using fallback profile", error);
     const fallback = fallbackUserProfile(input);
-    return await bridgeReadUserProfile(input.email)
-      .catch(() => bridgeUpdateUserProfile(input.email, { username: fallback.username, name: fallback.name, image: input.image ?? null }, input.image))
+    return await bridgeUpdateUserProfile(input.email, { username: fallback.username, name: fallback.name, image: input.image ?? null, recordSignIn: true }, input.image)
       .catch(() => fallback);
   }
 }
@@ -288,7 +288,7 @@ export async function getOrFallbackUserProfile(input: { email: string; name?: st
 
 export async function updateUserProfile(userId: string, input: ProfileUpdate) {
   const username = input.username ? await uniqueUsername(input.username, userId) : undefined;
-  const { minecraftUsername: _minecraftUsername, ...data } = input;
+  const { minecraftUsername: _minecraftUsername, recordSignIn: _recordSignIn, ...data } = input;
   return prisma.user.update({
     where: { id: userId },
     data: { ...data, ...(username ? { username } : {}) },
