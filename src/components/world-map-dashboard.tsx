@@ -3,34 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
+import { emptyWorldMapData, GIZMOCRAFT_WORLD_SYNC_MODPACK, WORLD_MAP_CLIENT_CACHE_KEY, WORLD_MAP_REFRESH_SECONDS } from "@/lib/world-map";
 import type { WorldMapData, WorldMapRegion } from "@/lib/world-map";
 
-const CACHE_KEY = "gizmocraft:last-world-map";
-const POLL_MS = 15_000;
+const CACHE_KEY = WORLD_MAP_CLIENT_CACHE_KEY;
+const POLL_MS = WORLD_MAP_REFRESH_SECONDS * 1_000;
 
-const emptyMap: WorldMapData = {
-  world: {
-    name: "Gizmo Ivan — Dole",
-    dimension: "overworld",
-    spawn: { x: 0, z: 0 },
-    regionCount: 0,
-    discoveredChunks: 0,
-    loadedBlockBounds: null,
-    lastScan: "waiting for live scan",
-  },
-  regions: [],
-  tracking: {
-    available: false,
-    status: "waiting-for-mapper",
-    note: "Minecraft tracking backend has not published a map manifest yet.",
-  },
-  live: false,
-  visibility: {
-    public: ["Spawn origin", "Discovered region coverage", "Live scan time"],
-    signedIn: ["Profile-linked overlays"],
-    restricted: ["Private markers and player trails"],
-  },
-};
+const emptyMap: WorldMapData = emptyWorldMapData();
 
 function format(value: number) {
   return new Intl.NumberFormat("en").format(value);
@@ -138,6 +117,10 @@ function GlobeScene({ data }: { data: WorldMapData }) {
 
     const regionGroup = new THREE.Group();
     root.add(regionGroup);
+    const visitedGroup = new THREE.Group();
+    root.add(visitedGroup);
+    const playerGroup = new THREE.Group();
+    root.add(playerGroup);
 
     const spawnGeometry = new THREE.SphereGeometry(0.075, 16, 16);
     const spawnMaterial = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
@@ -172,17 +155,21 @@ function GlobeScene({ data }: { data: WorldMapData }) {
     function rebuildRegions() {
       const current = dataRef.current;
       const bounds = current.world.loadedBlockBounds;
-      const signature = `${current.regions.map((r) => r.id).join("|")}:${bounds?.minX}:${bounds?.minZ}:${bounds?.maxX}:${bounds?.maxZ}:${current.world.spawn.x}:${current.world.spawn.z}`;
+      const visitedSignature = current.tracking?.visitedChunks?.map((chunk) => chunk.id).join("|") ?? "";
+      const playerSignature = current.tracking?.livePlayers?.map((player) => `${player.name}:${player.chunkX}:${player.chunkZ}:${player.lastSeenAt}`).join("|") ?? "";
+      const signature = `${current.regions.map((r) => r.id).join("|")}:${visitedSignature}:${playerSignature}:${bounds?.minX}:${bounds?.minZ}:${bounds?.maxX}:${bounds?.maxZ}:${current.world.spawn.x}:${current.world.spawn.z}`;
       if (signature === lastRegionSignature) return;
       lastRegionSignature = signature;
-      regionGroup.traverse((object) => {
+      [regionGroup, visitedGroup, playerGroup].forEach((group) => group.traverse((object) => {
         if (object instanceof THREE.Mesh) {
           object.geometry.dispose();
           if (Array.isArray(object.material)) object.material.forEach((material) => material.dispose());
           else object.material.dispose();
         }
-      });
+      }));
       regionGroup.clear();
+      visitedGroup.clear();
+      playerGroup.clear();
       if (!bounds) return;
       for (const region of current.regions) {
         const center = regionCenter(region);
@@ -192,6 +179,20 @@ function GlobeScene({ data }: { data: WorldMapData }) {
         tile.lookAt(new THREE.Vector3(0, 0, 0));
         tile.rotateY(Math.PI);
         regionGroup.add(tile);
+      }
+      for (const chunk of current.tracking?.visitedChunks?.slice(0, 900) ?? []) {
+        const position = blockToSphere(chunk.chunkX * 16 + 8, chunk.chunkZ * 16 + 8, bounds, 2.105);
+        const dot = new THREE.Mesh(new THREE.CircleGeometry(0.018, 8), new THREE.MeshBasicMaterial({ color: 0xfb923c, transparent: true, opacity: 0.92 }));
+        dot.position.copy(position);
+        dot.lookAt(new THREE.Vector3(0, 0, 0));
+        dot.rotateY(Math.PI);
+        visitedGroup.add(dot);
+      }
+      for (const player of current.tracking?.livePlayers ?? []) {
+        const position = blockToSphere(player.x, player.z, bounds, 2.22);
+        const marker = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 16), new THREE.MeshBasicMaterial({ color: 0xf472b6 }));
+        marker.position.copy(position);
+        playerGroup.add(marker);
       }
       const spawn = blockToSphere(current.world.spawn.x, current.world.spawn.z, bounds, 2.13);
       spawnMarker.visible = true;
@@ -242,6 +243,13 @@ function GlobeScene({ data }: { data: WorldMapData }) {
           else object.material.dispose();
         }
       });
+      [visitedGroup, playerGroup].forEach((group) => group.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          if (Array.isArray(object.material)) object.material.forEach((material) => material.dispose());
+          else object.material.dispose();
+        }
+      }));
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -261,15 +269,15 @@ function GlobeScene({ data }: { data: WorldMapData }) {
   );
 }
 
-export function WorldMapDashboard() {
-  const [data, setData] = useState<WorldMapData>(emptyMap);
+export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: WorldMapData }) {
+  const [data, setData] = useState<WorldMapData>(initialData);
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
 
   async function refresh(showBusy = false) {
     if (showBusy) setRefreshing(true);
     try {
-      const res = await fetch("/api/world-map", { cache: "no-store" });
+      const res = await fetch("/api/world-map", { cache: showBusy ? "no-store" : "default" });
       if (!res.ok) throw new Error(`World map failed: ${res.status}`);
       const next = await res.json();
       setData(next);
@@ -284,11 +292,12 @@ export function WorldMapDashboard() {
 
   useEffect(() => {
     const cached = readClientCache<WorldMapData>(CACHE_KEY);
-    if (cached) setData(cached);
+    if (cached && !initialData.live) setData(cached);
+    writeClientCache(CACHE_KEY, initialData);
     void refresh(false);
     const timer = window.setInterval(() => void refresh(false), POLL_MS);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [initialData]);
 
   const boundsLabel = useMemo(() => {
     const bounds = data.world.loadedBlockBounds;
@@ -296,9 +305,8 @@ export function WorldMapDashboard() {
     return `X ${format(bounds.minX)} → ${format(bounds.maxX)} · Z ${format(bounds.minZ)} → ${format(bounds.maxZ)}`;
   }, [data.world.loadedBlockBounds]);
 
-  const trackingArtifacts = data.tracking?.artifacts ?? [];
-  const artifactBase = data.tracking?.publicBaseUrl ?? "";
-  const artifactUrl = (path: string) => path.startsWith("http") || path.startsWith("/") ? path : `${artifactBase}/${path}`;
+  const livePlayers = data.tracking?.livePlayers ?? [];
+  const visitedChunks = data.tracking?.visitedChunks ?? [];
 
   return (
     <div className="space-y-6">
@@ -306,14 +314,51 @@ export function WorldMapDashboard() {
         <div>
           <p className="text-sm uppercase tracking-[0.35em] text-emerald-200/80">Public world map</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">3D Earth Ball</h1>
-          <p className="mt-3 max-w-3xl text-base text-slate-300">A live globe of the GizmoCraft world. It starts from spawn and paints the region files we have discovered/loaded so far; new explored regions appear automatically as the bridge sees more world files.</p>
+          <p className="mt-3 max-w-3xl text-base text-slate-300">A live globe of the GizmoCraft world. Green tiles are server region files, orange sparks are client-visited chunks, and pink beacons are live players from the new Fabric heartbeat.</p>
         </div>
         <div className="rounded-2xl border border-lime-300/30 bg-lime-300/10 p-5 text-sm">
-          <p className="font-black text-lime-100">{refreshing ? "Refreshing scan…" : data.live ? "Live bridge scan · 15s refresh" : failed ? "Showing last loaded map" : "Last loaded map"}</p>
+          <p className="font-black text-lime-100">{refreshing ? "Refreshing scan…" : data.live ? "Live bridge + client heartbeat · 15s refresh" : failed ? "Showing last loaded map" : "Last loaded map"}</p>
           <p className="mt-2 text-slate-300">Last scan: {data.world.lastScan}</p>
-          <button type="button" onClick={() => void refresh(true)} disabled={refreshing} className="mt-4 rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-70">{refreshing ? "Refreshing…" : "Refresh now"}</button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void refresh(true)} disabled={refreshing} className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-70">{refreshing ? "Refreshing…" : "Refresh now"}</button>
+            <a href={GIZMOCRAFT_WORLD_SYNC_MODPACK.href} download={GIZMOCRAFT_WORLD_SYNC_MODPACK.fileName} className="rounded-full border border-white/20 bg-white px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-cyan-100">
+              {GIZMOCRAFT_WORLD_SYNC_MODPACK.label}
+            </a>
+          </div>
+          <p className="mt-3 text-xs text-lime-100/80">{GIZMOCRAFT_WORLD_SYNC_MODPACK.status}</p>
         </div>
       </header>
+
+      <section className="rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-5 shadow-xl shadow-cyan-950/20">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-100/80">Client modpack</p>
+            <h2 className="mt-1 text-2xl font-black text-white">Live tracking companion mod</h2>
+            <p className="mt-2 max-w-3xl text-sm text-slate-300">{GIZMOCRAFT_WORLD_SYNC_MODPACK.summary} The dashboard turns those heartbeats into pink live-player beacons and orange visited-chunk memory.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <details className="group relative">
+              <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded-full border border-cyan-100/40 bg-slate-950/45 px-5 py-3 text-sm font-black text-cyan-50 transition hover:bg-slate-900">
+                How to install
+              </summary>
+              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/95 p-4 text-sm text-slate-200 shadow-2xl shadow-black/40 lg:absolute lg:right-0 lg:z-20 lg:w-[28rem]">
+                <p className="font-black text-white">Simple install directions</p>
+                <ol className="mt-2 list-decimal space-y-1 pl-5">
+                  <li>Download and unzip the pack.</li>
+                  <li>Open Minecraft folder: Windows <code className="rounded bg-black/35 px-1">%APPDATA%\.minecraft</code>.</li>
+                  <li>Copy <code className="rounded bg-black/35 px-1">mods/{GIZMOCRAFT_WORLD_SYNC_MODPACK.jarName}</code> from the zip.</li>
+                  <li>Put that <code className="rounded bg-black/35 px-1">.jar</code> in <code className="rounded bg-black/35 px-1">.minecraft/mods</code>.</li>
+                  <li>Do not put <code className="rounded bg-black/35 px-1">manifest.json</code> or <code className="rounded bg-black/35 px-1">README.md</code> in mods.</li>
+                </ol>
+              </div>
+            </details>
+            <a href={GIZMOCRAFT_WORLD_SYNC_MODPACK.href} download={GIZMOCRAFT_WORLD_SYNC_MODPACK.fileName} className="inline-flex items-center justify-center rounded-full bg-cyan-200 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-white">
+              {GIZMOCRAFT_WORLD_SYNC_MODPACK.label}
+            </a>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-cyan-100/75">Version {GIZMOCRAFT_WORLD_SYNC_MODPACK.version} · {GIZMOCRAFT_WORLD_SYNC_MODPACK.status}</p>
+      </section>
 
       <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
         <GlobeScene data={data} />
@@ -321,8 +366,23 @@ export function WorldMapDashboard() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <Stat label="Discovered regions" value={format(data.world.regionCount)} />
             <Stat label="Approx. loaded chunks" value={format(data.world.discoveredChunks)} />
+            <Stat label="Live tracked players" value={format(livePlayers.length)} />
+            <Stat label="Client visited chunks" value={format(visitedChunks.length)} />
             <Stat label="Spawn origin" value={`X ${format(data.world.spawn.x)} · Z ${format(data.world.spawn.z)}`} />
             <Stat label="Loaded block bounds" value={boundsLabel} />
+          </div>
+          <div className="rounded-3xl border border-pink-300/20 bg-pink-300/10 p-5">
+            <h2 className="text-xl font-black text-white">Live player beacons</h2>
+            <p className="mt-1 text-sm text-pink-100/80">{data.tracking?.liveTelemetryAt ? `Last heartbeat ${data.tracking.liveTelemetryAt}` : "Waiting for a client heartbeat from the v0.2.0 mod."}</p>
+            <div className="mt-4 space-y-2">
+              {livePlayers.length ? livePlayers.map((player) => (
+                <div key={player.name} className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm">
+                  <p className="font-black text-white">{player.name}</p>
+                  <p className="text-slate-300">X {format(Math.round(player.x))} · Y {format(Math.round(player.y))} · Z {format(Math.round(player.z))}</p>
+                  <p className="text-xs text-pink-100/70">Chunk {player.chunkX}, {player.chunkZ}</p>
+                </div>
+              )) : <p className="text-sm text-slate-300">No live client has checked in yet.</p>}
+            </div>
           </div>
           <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
             <h2 className="text-xl font-black">Data visibility plan</h2>
@@ -331,43 +391,6 @@ export function WorldMapDashboard() {
             <Visibility label="Restricted/private later" items={data.visibility.restricted} tone="rose" />
           </div>
         </aside>
-      </section>
-
-      <section className="rounded-3xl border border-cyan-300/20 bg-cyan-300/8 p-5">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-200/80">Minecraft tracking backend</p>
-            <h2 className="mt-1 text-2xl font-black">Live-survey map layer</h2>
-            <p className="mt-1 text-sm text-slate-300">
-              {data.tracking?.available
-                ? `Generated ${data.tracking.generatedAt ?? "recently"} via ${data.tracking.method ?? "world/player survey"}.`
-                : data.tracking?.note ?? "Waiting for the mapper bot/survey collector to publish map artifacts."}
-            </p>
-          </div>
-          <span className={`rounded-full px-3 py-1 text-xs font-black ${data.tracking?.available ? "bg-emerald-300 text-slate-950" : "bg-amber-300 text-slate-950"}`}>
-            {data.tracking?.available ? "tracking artifacts online" : data.tracking?.status ?? "not generated"}
-          </span>
-        </div>
-        {data.tracking?.players?.length ? (
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
-            {data.tracking.players.map((player) => (
-              <div key={player.name} className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm">
-                <p className="font-black text-white">{player.name}</p>
-                <p className="text-slate-300">X {format(player.x)} · Y {format(player.y)} · Z {format(player.z)}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {trackingArtifacts.length ? (
-          <div className="mt-4 grid gap-3 lg:grid-cols-3">
-            {trackingArtifacts.filter((artifact) => artifact.kind === "image").map((artifact) => (
-              <a key={artifact.id} href={artifactUrl(artifact.path)} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-2xl border border-white/10 bg-black/25">
-                <img src={artifactUrl(artifact.path)} alt={artifact.label} className="h-48 w-full object-cover opacity-90 transition group-hover:scale-[1.02] group-hover:opacity-100" />
-                <p className="px-4 py-3 text-sm font-black text-white">{artifact.label}</p>
-              </a>
-            ))}
-          </div>
-        ) : null}
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">

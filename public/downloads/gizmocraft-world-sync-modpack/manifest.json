@@ -1,0 +1,28 @@
+{
+  "name": "GizmoCraft World Sync Modpack",
+  "version": "0.2.0",
+  "minecraft": "1.21.8+",
+  "loader": "Fabric Loader 0.17.2+",
+  "status": "live-position-and-visited-chunk-heartbeat",
+  "worldPage": "https://gizmocraft-dashboard.vercel.app/world",
+  "worldMapApi": "/api/world-map",
+  "telemetryApi": "/api/world-map/telemetry",
+  "includedModJar": "mods/gizmocraft-world-sync-client-0.2.0.jar",
+  "install": "Put mods/gizmocraft-world-sync-client-0.2.0.jar in your Minecraft mods folder. Do not put manifest.json or README.md in mods.",
+  "sharedMemory": {
+    "mode": "server-stored-shared-memory",
+    "description": "Discovered world coverage and live client telemetry are recorded once through the GizmoCraft bridge and exposed to the dashboard as shared map memory."
+  },
+  "capabilities": [
+    "Fabric client mod .jar included",
+    "downloads latest /api/world-map on client launch",
+    "sends live player position every 5 seconds while in-world",
+    "sends visited chunk heartbeats for shared dashboard coverage",
+    "stores cache in .minecraft/gizmocraft-world-sync/latest-world-map.json",
+    "stores heartbeat proof in .minecraft/gizmocraft-world-sync/latest-heartbeat.json"
+  ],
+  "notYetIncluded": [
+    "Distant-Horizons-style shared LOD renderer",
+    "in-game far-view terrain visualization"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "gizmocraft_world_sync",
+  "version": "0.2.0",
+  "name": "GizmoCraft World Sync",
+  "description": "Client-side GizmoCraft mod that sends live position/visited-chunk heartbeats and caches the latest shared world-map data.",
+  "authors": ["GizmoCraft"],
+  "contact": {
+    "homepage": "https://gizmocraft-dashboard.vercel.app/world"
+  },
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "app.gizmocraft.worldsync.GizmoCraftWorldSyncClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.2",
+    "minecraft": ">=1.21.8"
+  }
+}

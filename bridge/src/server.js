@@ -15,6 +15,7 @@ const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-s
 const worldName = process.env.MINECRAFT_WORLD_NAME ?? "gizmo-ivan-dole";
 const mapArtifactsDir = process.env.MINECRAFT_MAP_ARTIFACTS_DIR ?? `${serverRoot}/gizmocraft-map`;
 const mapManifestPath = process.env.MINECRAFT_MAP_MANIFEST ?? `${mapArtifactsDir}/manifest.json`;
+const liveTelemetryPath = process.env.MINECRAFT_LIVE_TELEMETRY ?? `${mapArtifactsDir}/live-telemetry.json`;
 const screenshotsDir = process.env.MINECRAFT_SCREENSHOTS_DIR ?? `${serverRoot}/screenshots`;
 const execFileAsync = promisify(execFile);
 let activeSyncPromise = null;
@@ -274,6 +275,75 @@ function regionToBlockBounds(regionX, regionZ) {
   const minBlockZ = regionZ * 512;
   return { minBlockX, minBlockZ, maxBlockX: minBlockX + 511, maxBlockZ: minBlockZ + 511 };
 }
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function sanitizeTelemetryPlayerName(value) {
+  const name = String(value ?? "").trim();
+  return /^[A-Za-z0-9_]{1,16}$/.test(name) ? name : "unknown";
+}
+function normalizeTelemetry(input, nowIso = new Date().toISOString()) {
+  const raw = input && typeof input === "object" ? input : {};
+  const playerRaw = raw.player && typeof raw.player === "object" ? raw.player : raw;
+  const x = finiteNumber(playerRaw.x) ?? 0;
+  const y = finiteNumber(playerRaw.y) ?? 0;
+  const z = finiteNumber(playerRaw.z) ?? 0;
+  const chunkX = Math.trunc(finiteNumber(playerRaw.chunkX) ?? Math.floor(x / 16));
+  const chunkZ = Math.trunc(finiteNumber(playerRaw.chunkZ) ?? Math.floor(z / 16));
+  const player = {
+    name: sanitizeTelemetryPlayerName(playerRaw.name),
+    uuid: typeof playerRaw.uuid === "string" && playerRaw.uuid.trim() ? playerRaw.uuid.trim() : undefined,
+    x,
+    y,
+    z,
+    chunkX,
+    chunkZ,
+    lastSeenAt: nowIso,
+  };
+  const visitedSource = Array.isArray(raw.visitedChunks) ? raw.visitedChunks : Array.isArray(raw.visited) ? raw.visited : [];
+  const visitedChunks = visitedSource.flatMap((entry) => {
+    const chunkRaw = entry && typeof entry === "object" ? entry : {};
+    const cx = finiteNumber(chunkRaw.chunkX) ?? finiteNumber(chunkRaw.x);
+    const cz = finiteNumber(chunkRaw.chunkZ) ?? finiteNumber(chunkRaw.z);
+    if (cx === null || cz === null) return [];
+    const chunkXValue = Math.trunc(cx);
+    const chunkZValue = Math.trunc(cz);
+    return [{ id: `${chunkXValue}:${chunkZValue}`, chunkX: chunkXValue, chunkZ: chunkZValue, player: player.name, lastSeenAt: nowIso }];
+  });
+  if (!visitedChunks.some((chunk) => chunk.id === `${chunkX}:${chunkZ}`)) {
+    visitedChunks.unshift({ id: `${chunkX}:${chunkZ}`, chunkX, chunkZ, x, z, player: player.name, lastSeenAt: nowIso });
+  }
+  return { player, visitedChunks, lastSeenAt: nowIso };
+}
+async function readLiveTelemetry() {
+  try {
+    const parsed = JSON.parse(await readFile(liveTelemetryPath, "utf8"));
+    return {
+      livePlayers: Array.isArray(parsed.livePlayers) ? parsed.livePlayers : [],
+      visitedChunks: Array.isArray(parsed.visitedChunks) ? parsed.visitedChunks : [],
+      liveTelemetryAt: parsed.liveTelemetryAt ?? null,
+    };
+  } catch {
+    return { livePlayers: [], visitedChunks: [], liveTelemetryAt: null };
+  }
+}
+async function writeLiveTelemetry(sample) {
+  const current = await readLiveTelemetry();
+  const playerKey = sample.player.name;
+  const livePlayers = [sample.player, ...current.livePlayers.filter((player) => player.name !== playerKey)]
+    .sort((a, b) => String(b.lastSeenAt ?? "").localeCompare(String(a.lastSeenAt ?? "")) || String(a.name).localeCompare(String(b.name)))
+    .slice(0, 32);
+  const chunkMap = new Map(current.visitedChunks.map((chunk) => [chunk.id, chunk]));
+  for (const chunk of sample.visitedChunks) chunkMap.set(chunk.id, chunk);
+  const visitedChunks = [...chunkMap.values()]
+    .sort((a, b) => String(b.lastSeenAt ?? "").localeCompare(String(a.lastSeenAt ?? "")) || String(a.id).localeCompare(String(b.id)))
+    .slice(0, 5000);
+  const payload = { livePlayers, visitedChunks, liveTelemetryAt: sample.lastSeenAt, updatedAt: new Date().toISOString() };
+  await mkdir(mapArtifactsDir, { recursive: true });
+  await writeFile(liveTelemetryPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  return payload;
+}
 async function readWorldSpawn() {
   // Without an NBT dependency, keep spawn at Minecraft's default origin when
   // level.dat cannot be parsed. The globe still expands from the loaded region
@@ -294,10 +364,13 @@ async function readRegionDir() {
   return candidates[0];
 }
 async function readTrackingManifest() {
+  const liveTelemetry = await readLiveTelemetry();
   try {
     const manifest = JSON.parse(await readFile(mapManifestPath, "utf8"));
     return {
       ...manifest,
+      ...liveTelemetry,
+      status: liveTelemetry.livePlayers.length ? "live-client-telemetry" : manifest.status,
       publicBaseUrl: "/public/world-map-artifacts",
       manifestPath: mapManifestPath,
       available: true,
@@ -308,7 +381,17 @@ async function readTrackingManifest() {
       manifestPath: mapManifestPath,
       status: "not-generated-yet",
       note: "Run the live/player-survey mapper to generate manifest.json and map artifacts.",
+      ...liveTelemetry,
     };
+  }
+}
+async function handleWorldMapTelemetry(req, res) {
+  try {
+    const sample = normalizeTelemetry(req.body);
+    const telemetry = await writeLiveTelemetry(sample);
+    res.status(202).json({ ok: true, telemetry });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: String(err?.message ?? err) });
   }
 }
 async function handleWorldMap(_req, res) {
@@ -633,6 +716,8 @@ app.get("/api/screenshots/:id", handleScreenshotImage);
 app.get("/screenshots/:id", handleScreenshotImage);
 app.post("/api/screenshots/upload", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "15mb" }), handleScreenshotUpload);
 app.post("/screenshots/upload", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "15mb" }), handleScreenshotUpload);
+app.post("/api/world-map/telemetry", handleWorldMapTelemetry);
+app.post("/world-map/telemetry", handleWorldMapTelemetry);
 app.get("/api/world-map", handleWorldMap);
 app.get("/world-map", handleWorldMap);
 

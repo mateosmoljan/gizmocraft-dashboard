@@ -1,8 +1,7 @@
-import { GizmoShell } from "@/components/gizmo-shell";
-import { WorldMapDashboard } from "@/components/world-map-dashboard";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default function WorldPage() {
-  return <GizmoShell><WorldMapDashboard /></GizmoShell>;
+  redirect("/dashboard");
 }

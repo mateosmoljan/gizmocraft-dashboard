@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseRegionFileName, regionToBlockBounds, emptyWorldMapData } from "../src/lib/world-map";
+import { parseRegionFileName, regionToBlockBounds, emptyWorldMapData, mapMemoryMetadata, GIZMOCRAFT_WORLD_SYNC_MODPACK, WORLD_MAP_CLIENT_CACHE_KEY, normalizeWorldMapTelemetry, mergeTrackingTelemetry } from "../src/lib/world-map";
 
 test("parseRegionFileName accepts Minecraft region names", () => {
   assert.deepEqual(parseRegionFileName("r.0.0.mca"), { regionX: 0, regionZ: 0 });
@@ -20,5 +20,56 @@ test("emptyWorldMapData is safe for public fallback", () => {
   assert.equal(data.world.regionCount, 0);
   assert.deepEqual(data.regions, []);
   assert.match(data.visibility.public.join(" "), /Spawn/);
+  assert.equal(data.mapMemory.clientCacheKey, WORLD_MAP_CLIENT_CACHE_KEY);
+  assert.equal(data.mapMemory.version, "offline-empty");
   assert.match(data.error ?? "", /offline/);
+});
+
+test("mapMemoryMetadata describes shared server-stored map memory", () => {
+  const data = emptyWorldMapData();
+  const memory = mapMemoryMetadata({
+    ...data,
+    world: { ...data.world, regionCount: 2, discoveredChunks: 2048, lastScan: "scan-a" },
+    regions: [
+      { id: "0:0", regionX: 0, regionZ: 0, minBlockX: 0, minBlockZ: 0, maxBlockX: 511, maxBlockZ: 511, chunkCount: 1024 },
+      { id: "1:0", regionX: 1, regionZ: 0, minBlockX: 512, minBlockZ: 0, maxBlockX: 1023, maxBlockZ: 511, chunkCount: 1024 },
+    ],
+  });
+  assert.equal(memory.mode, "server-stored-shared-memory");
+  assert.equal(memory.clientCacheKey, WORLD_MAP_CLIENT_CACHE_KEY);
+  assert.match(memory.storage, /gizmocraft-map\/coverage\.json/);
+  assert.match(memory.strategy.join(" "), /shared JSON artifact/);
+});
+
+test("world sync modpack download metadata points at a public zip", () => {
+  assert.equal(GIZMOCRAFT_WORLD_SYNC_MODPACK.fileName, "gizmocraft-world-sync-modpack.zip");
+  assert.match(GIZMOCRAFT_WORLD_SYNC_MODPACK.href, /^\/downloads\/.*\.zip$/);
+  assert.equal(GIZMOCRAFT_WORLD_SYNC_MODPACK.version, "0.2.0");
+  assert.match(GIZMOCRAFT_WORLD_SYNC_MODPACK.status, /Live position/);
+});
+
+test("normalizeWorldMapTelemetry sanitizes live player coordinates and visited chunk", () => {
+  const telemetry = normalizeWorldMapTelemetry({
+    player: { name: " Gizmeta ", uuid: "abc", x: 1567.8, y: 71.2, z: 9948.6 },
+    visited: [{ x: 97, z: 621 }, { chunkX: 98, chunkZ: 622 }],
+  }, "2026-06-14T16:40:00.000Z");
+
+  assert.equal(telemetry.player.name, "Gizmeta");
+  assert.equal(telemetry.player.x, 1567.8);
+  assert.equal(telemetry.player.chunkX, 97);
+  assert.equal(telemetry.player.chunkZ, 621);
+  assert.deepEqual(telemetry.visitedChunks.map((chunk) => chunk.id), ["97:621", "98:622"]);
+  assert.equal(telemetry.lastSeenAt, "2026-06-14T16:40:00.000Z");
+});
+
+test("mergeTrackingTelemetry keeps live players and deduplicated visited chunks newest first", () => {
+  const merged = mergeTrackingTelemetry({ available: true, status: "generated" }, [
+    normalizeWorldMapTelemetry({ player: { name: "Gizmeta", x: 1567, y: 71, z: 9948 }, visited: [{ chunkX: 97, chunkZ: 621 }] }, "2026-06-14T16:40:00.000Z"),
+    normalizeWorldMapTelemetry({ player: { name: "Gizmeta", x: 1600, y: 72, z: 9950 }, visited: [{ chunkX: 100, chunkZ: 621 }, { chunkX: 97, chunkZ: 621 }] }, "2026-06-14T16:41:00.000Z"),
+  ]);
+
+  assert.equal(merged.status, "live-client-telemetry");
+  assert.equal(merged.livePlayers?.length, 1);
+  assert.equal(merged.livePlayers?.[0].x, 1600);
+  assert.deepEqual(merged.visitedChunks?.map((chunk) => chunk.id), ["100:621", "97:621"]);
 });

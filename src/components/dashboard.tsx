@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { boards as fallbackBoards, players as fallbackPlayers, worldStats as fallbackWorldStats } from "@/lib/sample-data";
-import { trackedSignals } from "@/lib/tracking";
 import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { formatPlaytimeHours } from "@/lib/playtime";
@@ -10,7 +9,7 @@ import { DashboardProfileSummary } from "@/components/dashboard-profile-summary"
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
-type DashboardView = "overview" | "players" | "boards" | "tracking";
+type DashboardView = "overview" | "players" | "boards";
 type DashboardData = { players: DashboardPlayer[]; worldStats: DashboardWorld; boards: typeof fallbackBoards; live: boolean };
 const DASHBOARD_CACHE_KEY = "gizmocraft:last-dashboard-data:v2-live-status";
 const initialDashboardData = (): DashboardData => ({ players: fallbackPlayers, worldStats: fallbackWorldStats, boards: fallbackBoards, live: false });
@@ -62,7 +61,6 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
       {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data.live)} refreshing={refreshing} /> : null}
       {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data.live)} refreshing={refreshing} /> : null}
       {view === "boards" ? <BoardsSection players={currentPlayers} boards={currentBoards} refreshing={refreshing} /> : null}
-      {view === "tracking" ? <TrackingSection /> : null}
     </div>
   );
 }
@@ -76,7 +74,6 @@ function Hero({ worldStats, live, view, refreshing, failed, onRefresh }: { world
     overview: ["Minecraft Overview", "The clean world snapshot: online state, top score, last sync, and quick links."],
     players: ["Player cards", "One page for tracked players, profiles, and the stats Mateo will roast later."],
     boards: ["Rivalry boards", "Public leaderboards, shame boards, and podiums for everyone to compare."],
-    tracking: ["Tracking map", "Every world signal this dashboard collects or is ready to collect from Gizmo Ivan."],
   } as const;
   const [title, subtitle] = titles[view];
   return (
@@ -133,7 +130,6 @@ function OverviewSection({ players, worldStats, live, refreshing }: { players: D
           <div className="mt-4 space-y-3">
             <a className="block rounded-2xl bg-emerald-300/10 px-4 py-3 font-bold text-emerald-100" href="/players">Open player cards →</a>
             <a className="block rounded-2xl bg-rose-300/10 px-4 py-3 font-bold text-rose-100" href="/leaderboards">Open shame boards →</a>
-            <a className="block rounded-2xl bg-lime-300/10 px-4 py-3 font-bold text-lime-100" href="/tracking">Open tracking map →</a>
           </div>
         </article>
       </section>
@@ -226,18 +222,6 @@ function BoardsSection({ players, boards, refreshing }: { players: DashboardPlay
             </div>
           );
         })}
-      </div>
-    </section>
-  );
-}
-
-function TrackingSection() {
-  return (
-    <section className="rounded-3xl border border-white/10 bg-white/8 p-5 backdrop-blur">
-      <h2 className="text-2xl font-black">Tracking roadmap: everything worth tracking</h2>
-      <p className="mt-2 text-sm text-slate-300">These are split out so the dashboard overview stays clean while the collector roadmap remains visible.</p>
-      <div className="mt-4 grid gap-2 md:grid-cols-3">
-        {trackedSignals.map((signal) => <div key={signal} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-200">{signal}</div>)}
       </div>
     </section>
   );

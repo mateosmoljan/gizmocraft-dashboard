@@ -1,5 +1,13 @@
-const CACHE_NAME = "gizmocraft-shell-v1";
-const SHELL_ROUTES = ["/", "/dashboard", "/signing", "/icon.svg", "/manifest.webmanifest"];
+const CACHE_NAME = "gizmocraft-shell-v2";
+const SHELL_ROUTES = [
+  "/",
+  "/dashboard",
+  "/signing",
+  "/gizmocraft-logo-icon.png",
+  "/icons/gizmocraft-logo-192.png",
+  "/icons/gizmocraft-logo-512.png",
+  "/manifest.webmanifest",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

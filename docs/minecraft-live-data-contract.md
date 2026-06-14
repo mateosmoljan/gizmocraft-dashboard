@@ -86,6 +86,14 @@ The bridge combines Minecraft player rows with app/user profile rows:
 - recent Minecraft world sessions
 - currently online/open session state when present
 
+## Related tracking-map contract
+
+The 3D Earth/dashboard map shell consumes the live-survey/tracking layer described in:
+
+- `docs/minecraft-tracking-map-contract.md`
+
+That layer publishes `tracking` metadata/artifacts through `/api/world-map` and serves image artifacts from `/public/world-map-artifacts/*` when a mapper/survey run has produced `manifest.json`.
+
 ## Server diagnostics collected separately
 
 These are server/host telemetry, not world stats:

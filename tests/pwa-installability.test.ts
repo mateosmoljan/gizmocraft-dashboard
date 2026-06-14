@@ -5,11 +5,12 @@ import test from "node:test";
 test("GizmoCraft exposes installable PWA metadata", () => {
   const manifest = readFileSync("src/app/manifest.ts", "utf8");
   assert.match(manifest, /name: "GizmoCraft Dashboard"/);
+  assert.match(manifest, /id: "\/gizmocraft-dashboard"/);
   assert.match(manifest, /short_name: "GizmoCraft"/);
   assert.match(manifest, /start_url: "\/dashboard\?source=pwa"/);
   assert.match(manifest, /display: "standalone"/);
-  assert.match(manifest, /\/icons\/icon-192\.png/);
-  assert.match(manifest, /\/icons\/icon-512\.png/);
+  assert.match(manifest, /\/icons\/gizmocraft-logo-192\.png/);
+  assert.match(manifest, /\/icons\/gizmocraft-logo-512\.png/);
   assert.match(manifest, /purpose: "maskable"/);
 
   const layout = readFileSync("src/app/layout.tsx", "utf8");
@@ -31,7 +32,13 @@ test("GizmoCraft exposes installable PWA metadata", () => {
   assert.match(sw, /self\.addEventListener\("install"/);
   assert.match(sw, /self\.addEventListener\("fetch"/);
 
-  for (const icon of ["public/icons/icon-192.png", "public/icons/icon-512.png", "public/icons/maskable-512.png", "public/icons/apple-touch-icon.png"]) {
+  for (const icon of [
+    "public/gizmocraft-logo-icon.png",
+    "public/icons/gizmocraft-logo-192.png",
+    "public/icons/gizmocraft-logo-512.png",
+    "public/icons/gizmocraft-logo-maskable-512.png",
+    "public/icons/gizmocraft-logo-apple-touch.png",
+  ]) {
     assert.equal(existsSync(icon), true, `${icon} should exist`);
   }
 });
