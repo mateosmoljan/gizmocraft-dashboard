@@ -13,7 +13,12 @@ export function SignInPrompt({ callbackUrl = "/dashboard", players = [], worldSt
     <div className="mx-auto w-full max-w-6xl">
       <section className="grid gap-5 rounded-3xl border border-emerald-300/20 bg-white/8 p-6 shadow-2xl shadow-black/30 backdrop-blur lg:grid-cols-[1.15fr_0.85fr] lg:p-8">
         <div className="text-center lg:text-left">
-          <p className="text-sm uppercase tracking-[0.35em] text-emerald-200/80">GizmoCraft access</p>
+          <img
+            src="/brand/gizmocraft-floating-world-logo.png"
+            alt="GizmoCraft floating world logo"
+            className="mx-auto size-24 object-contain drop-shadow-[0_0_30px_rgba(45,212,191,0.42)] lg:mx-0"
+          />
+          <p className="mt-4 text-sm uppercase tracking-[0.35em] text-emerald-200/80">GizmoCraft access</p>
           <h1 className="mt-3 text-4xl font-black md:text-6xl">The Minecraft dashboard is live</h1>
           <p className="mx-auto mt-4 max-w-2xl text-slate-300 lg:mx-0">
             Sign in with Google to open your player profile, private settings, full stat cards, and the complete rivalry boards for the Gizmo Ivan hard-survival world.

@@ -50,7 +50,11 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
       <div className="relative z-10 flex min-h-screen flex-col lg:flex-row">
         <aside className="flex flex-col border-b border-white/10 bg-slate-950/75 px-4 py-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
           <div className="flex items-center gap-3">
-            <div className="grid size-11 place-items-center rounded-2xl border border-emerald-300/30 bg-emerald-300/12 text-2xl shadow-[0_0_24px_rgba(52,211,153,0.16)]">⛏️</div>
+            <img
+              src="/brand/gizmocraft-floating-world-logo.png"
+              alt="GizmoCraft floating world logo"
+              className="size-14 shrink-0 rounded-2xl object-contain drop-shadow-[0_0_22px_rgba(45,212,191,0.38)]"
+            />
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">GizmoCraft</p>
               <h1 className="text-lg font-black">Command</h1>
