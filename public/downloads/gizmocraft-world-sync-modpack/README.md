@@ -1,20 +1,36 @@
-# GizmoCraft World Sync Modpack
+# GizmoCraft World Sync + Bliss Shader Pack
 
-This is the public download pack for the GizmoCraft shared-world-map + live tracking experience.
+This is the public download pack for the GizmoCraft shared-world-map, live tracking, and Bliss Shaders visual setup.
 
-## What do I put in the `mods` folder?
+## What goes where?
 
-Put this file in your Minecraft `mods` folder:
+Put this client mod file in your Minecraft `mods` folder:
 
 ```text
 mods/gizmocraft-world-sync-client-0.2.0.jar
 ```
 
+Put this shader pack ZIP in your Minecraft `shaderpacks` folder:
+
+```text
+shaderpacks/Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip
+```
+
 Do **not** put these files in `mods`:
 - `manifest.json`
 - `README.md`
+- `shaderpacks/Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip`
 
-Only the `.jar` file belongs in the Minecraft `mods` folder.
+Only the `.jar` file belongs in `mods`. The Bliss `.zip` stays zipped and belongs in `shaderpacks`.
+
+## Requirements for Bliss Shaders
+
+Bliss is a shader pack, not a normal Fabric mod. To use it, your client needs a shader loader:
+
+- Recommended: Fabric + Iris Shaders + Sodium
+- Alternative: OptiFine profile
+
+The GizmoCraft world-sync `.jar` is still the only custom GizmoCraft client mod in this pack.
 
 ## How to install it
 
@@ -30,8 +46,14 @@ Only the `.jar` file belongs in the Minecraft `mods` folder.
    - Windows: `%APPDATA%\.minecraft\mods\`
    - macOS: `~/Library/Application Support/minecraft/mods/`
    - Linux: `~/.minecraft/mods/`
-5. Start a Fabric modded Minecraft profile that matches GizmoCraft.
-6. Join GizmoCraft. The sync mod writes cache/status files to `.minecraft/gizmocraft-world-sync/` and sends a live heartbeat every 5 seconds.
+5. If there is no `shaderpacks` folder, create one.
+6. Put `Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip` here:
+   - Windows: `%APPDATA%\.minecraft\shaderpacks\`
+   - macOS: `~/Library/Application Support/minecraft/shaderpacks/`
+   - Linux: `~/.minecraft/shaderpacks/`
+7. Start a Fabric + Iris/Sodium Minecraft profile that matches GizmoCraft.
+8. In Minecraft: Options → Video Settings → Shader Packs → choose Bliss.
+9. Join GizmoCraft. The sync mod writes cache/status files to `.minecraft/gizmocraft-world-sync/` and sends a live heartbeat every 5 seconds.
 
 ### Option B — CurseForge / Modrinth App / Prism Launcher instance
 
@@ -42,24 +64,32 @@ If you use a launcher instance instead of the vanilla `.minecraft` folder:
 3. Click `Open Folder`, `Open Instance Folder`, or `Folder`.
 4. Open/create the `mods` folder inside that instance.
 5. Put `gizmocraft-world-sync-client-0.2.0.jar` into that instance `mods` folder.
-6. Launch that same instance.
+6. Open/create the `shaderpacks` folder inside that same instance.
+7. Put `Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip` into that instance `shaderpacks` folder.
+8. Launch that same instance and select Bliss in the shader pack menu.
 
-Important: do **not** put the mod into `saves`, `resourcepacks`, `shaderpacks`, or the world folder. Client mods go in `mods`.
+Important: do **not** put the mod into `saves`, `resourcepacks`, `shaderpacks`, or the world folder. Client mods go in `mods`; shader packs go in `shaderpacks`.
 
 ## What this zip contains today
 
 - `README.md` — these installation notes.
-- `manifest.json` — shared map-sync metadata.
+- `manifest.json` — shared map-sync and shader metadata.
 - `mods/gizmocraft-world-sync-client-0.2.0.jar` — the Fabric client mod to place in Minecraft `mods`.
+- `shaderpacks/Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip` — Bliss Shaders v2.1.2 from Modrinth, leave zipped and place in Minecraft `shaderpacks`.
 
-What it does now:
+What the GizmoCraft mod does now:
 - Downloads `/api/world-map` on client launch and caches it at `.minecraft/gizmocraft-world-sync/latest-world-map.json`.
 - Sends live player position + visited chunk heartbeats to `/api/world-map/telemetry` every 5 seconds while you are in-world.
 - Writes `.minecraft/gizmocraft-world-sync/latest-heartbeat.json` so you can confirm the heartbeat ran.
 
+What Bliss does:
+- Adds realistic lighting, sky, shadows, fog, and water visuals once enabled through Iris/OptiFine.
+- It does not send data to the dashboard and does not change server gameplay.
+
 ## Important current status
 
 - This now powers the dashboard live tracking layer.
+- This now includes Bliss Shaders v2.1.2 for client visuals.
 - This does **not** force Minecraft to keep chunks rendered behind you. That disappearing is normal render/view distance behavior.
 - It does **not** yet include Distant-Horizons-style far terrain rendering inside Minecraft.
 

@@ -45,8 +45,22 @@ test("mapMemoryMetadata describes shared server-stored map memory", () => {
 test("world sync modpack download metadata points at a public zip", () => {
   assert.equal(GIZMOCRAFT_WORLD_SYNC_MODPACK.fileName, "gizmocraft-world-sync-modpack.zip");
   assert.match(GIZMOCRAFT_WORLD_SYNC_MODPACK.href, /^\/downloads\/.*\.zip$/);
-  assert.equal(GIZMOCRAFT_WORLD_SYNC_MODPACK.version, "0.2.0");
-  assert.match(GIZMOCRAFT_WORLD_SYNC_MODPACK.status, /Live position/);
+  assert.equal(GIZMOCRAFT_WORLD_SYNC_MODPACK.version, "0.2.1");
+  assert.equal(GIZMOCRAFT_WORLD_SYNC_MODPACK.shaderPackName, "Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip");
+  assert.match(GIZMOCRAFT_WORLD_SYNC_MODPACK.status, /Bliss Shaders/);
+});
+
+test("world sync modpack zip includes Bliss shaderpack and the client jar", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+  const zipPath = "public/downloads/gizmocraft-world-sync-modpack.zip";
+  const list = execFileSync("python3", ["-c", `import zipfile; z=zipfile.ZipFile('${zipPath}'); print('\\n'.join(i.filename for i in z.infolist()))`], { encoding: "utf8" });
+  assert.match(list, /gizmocraft-world-sync-modpack\/mods\/gizmocraft-world-sync-client-0\.2\.0\.jar/);
+  assert.match(list, /gizmocraft-world-sync-modpack\/shaderpacks\/Bliss_v2\.1\.2_\(Chocapic13_Shaders_edit\)\.zip/);
+
+  const sha512 = execFileSync("python3", ["-c", `import hashlib,zipfile; z=zipfile.ZipFile('${zipPath}'); print(hashlib.sha512(z.read('gizmocraft-world-sync-modpack/shaderpacks/Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip')).hexdigest())`], { encoding: "utf8" }).trim();
+  assert.equal(sha512, "dafc60be4980ec40f40edc0f2625cb0976f3c9ce5ed86383146a120480826bb1de70ef5e38b7f1437294ed4d38c6ef3c82ebef0ae4e00b8cee165788c9c18280");
+  assert.ok(readFileSync(zipPath).length > 1_700_000);
 });
 
 test("world map dashboard polls uncached live map data", () => {

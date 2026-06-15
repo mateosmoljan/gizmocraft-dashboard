@@ -104,13 +104,14 @@ export const WORLD_MAP_CLIENT_CACHE_KEY = "gizmocraft:last-world-map:v2";
 export const WORLD_MAP_REFRESH_SECONDS = 15;
 
 export const GIZMOCRAFT_WORLD_SYNC_MODPACK = {
-  label: "Download World Sync Modpack",
+  label: "Download World Sync + Bliss Shader Pack",
   href: "/downloads/gizmocraft-world-sync-modpack.zip",
   fileName: "gizmocraft-world-sync-modpack.zip",
-  version: "0.2.0",
+  version: "0.2.1",
   jarName: "gizmocraft-world-sync-client-0.2.0.jar",
-  status: "Live position + visited chunk heartbeat. Put only gizmocraft-world-sync-client-0.2.0.jar in your mods folder.",
-  summary: "Downloads the GizmoCraft Fabric client mod that sends live position/visited-chunk heartbeats and caches the shared world-map data locally.",
+  shaderPackName: "Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip",
+  status: "Live position heartbeat + Bliss Shaders v2.1.2. Put the client jar in mods and the Bliss zip in shaderpacks.",
+  summary: "Downloads the GizmoCraft Fabric client mod plus Bliss Shaders v2.1.2 for the GizmoCraft visual setup.",
 } as const;
 
 function finiteNumber(value: unknown) {

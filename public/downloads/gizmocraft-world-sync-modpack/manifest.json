@@ -1,20 +1,32 @@
 {
-  "name": "GizmoCraft World Sync Modpack",
-  "version": "0.2.0",
-  "minecraft": "1.21.8+",
+  "name": "GizmoCraft World Sync + Bliss Shader Pack",
+  "version": "0.2.1",
+  "minecraft": "1.21.8+ / 26.1.2",
   "loader": "Fabric Loader 0.17.2+",
-  "status": "live-position-and-visited-chunk-heartbeat",
+  "status": "live-position-heartbeat-plus-bliss-shaders",
   "worldPage": "https://gizmocraft-dashboard.vercel.app/world",
   "worldMapApi": "/api/world-map",
   "telemetryApi": "/api/world-map/telemetry",
   "includedModJar": "mods/gizmocraft-world-sync-client-0.2.0.jar",
-  "install": "Put mods/gizmocraft-world-sync-client-0.2.0.jar in your Minecraft mods folder. Do not put manifest.json or README.md in mods.",
+  "includedShaderPack": "shaderpacks/Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip",
+  "shaderPack": {
+    "name": "Bliss Shaders",
+    "version": "2.1.2",
+    "source": "Modrinth",
+    "projectId": "ZvMtQlho",
+    "versionId": "kC2Y8q1P",
+    "file": "shaderpacks/Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip",
+    "sha512": "dafc60be4980ec40f40edc0f2625cb0976f3c9ce5ed86383146a120480826bb1de70ef5e38b7f1437294ed4d38c6ef3c82ebef0ae4e00b8cee165788c9c18280",
+    "requires": "Iris Shaders + Sodium on Fabric, or OptiFine"
+  },
+  "install": "Put mods/gizmocraft-world-sync-client-0.2.0.jar in your Minecraft mods folder. Put shaderpacks/Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip in your Minecraft shaderpacks folder. Do not put manifest.json or README.md in mods.",
   "sharedMemory": {
     "mode": "server-stored-shared-memory",
     "description": "Discovered world coverage and live client telemetry are recorded once through the GizmoCraft bridge and exposed to the dashboard as shared map memory."
   },
   "capabilities": [
     "Fabric client mod .jar included",
+    "Bliss Shaders v2.1.2 shaderpack included",
     "downloads latest /api/world-map on client launch",
     "sends live player position every 5 seconds while in-world",
     "sends visited chunk heartbeats for shared dashboard coverage",
@@ -22,6 +34,7 @@
     "stores heartbeat proof in .minecraft/gizmocraft-world-sync/latest-heartbeat.json"
   ],
   "notYetIncluded": [
+    "Iris/Sodium dependency jars",
     "Distant-Horizons-style shared LOD renderer",
     "in-game far-view terrain visualization"
   ]
