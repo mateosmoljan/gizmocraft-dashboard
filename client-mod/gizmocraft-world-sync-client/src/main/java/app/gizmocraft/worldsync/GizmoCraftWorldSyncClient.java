@@ -13,7 +13,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -21,8 +23,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class GizmoCraftWorldSyncClient implements ClientModInitializer {
+    private static final String CLIENT_VERSION = "0.2.2";
     private static final String WORLD_MAP_URL = "https://gizmocraft-dashboard.vercel.app/api/world-map";
     private static final String TELEMETRY_URL = "https://gizmocraft-dashboard.vercel.app/api/world-map/telemetry";
+    private static final String BLISS_SHADER_URL = "https://gizmocraft-dashboard.vercel.app/downloads/gizmocraft-world-sync-modpack/shaderpacks/Bliss_v2.1.2_%28Chocapic13_Shaders_edit%29.zip";
+    private static final String BLISS_SHADER_FILE = "Bliss_v2.1.2_(Chocapic13_Shaders_edit).zip";
+    private static final String BLISS_SHADER_SHA512 = "dafc60be4980ec40f40edc0f2625cb0976f3c9ce5ed86383146a120480826bb1de70ef5e38b7f1437294ed4d38c6ef3c82ebef0ae4e00b8cee165788c9c18280";
     private static final int HEARTBEAT_SECONDS = 5;
     private static final Set<String> visitedChunks = new HashSet<>();
     private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor((task) -> {
@@ -35,6 +41,7 @@ public final class GizmoCraftWorldSyncClient implements ClientModInitializer {
     public void onInitializeClient() {
         Path gameDir = FabricLoader.getInstance().getGameDir();
         Path cacheDir = gameDir.resolve("gizmocraft-world-sync");
+        scheduler.execute(() -> installBlissShaderPack(gameDir, cacheDir));
         scheduler.execute(() -> syncWorldMap(cacheDir));
         scheduler.scheduleAtFixedRate(() -> sendHeartbeat(cacheDir), 8, HEARTBEAT_SECONDS, TimeUnit.SECONDS);
     }
@@ -43,11 +50,68 @@ public final class GizmoCraftWorldSyncClient implements ClientModInitializer {
         return HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
     }
 
+    private static void installBlissShaderPack(Path gameDir, Path cacheDir) {
+        Path shaderpacksDir = gameDir.resolve("shaderpacks");
+        Path blissFile = shaderpacksDir.resolve(BLISS_SHADER_FILE);
+        Path statusFile = cacheDir.resolve("shaderpack-status.txt");
+        try {
+            Files.createDirectories(shaderpacksDir);
+            Files.createDirectories(cacheDir);
+            if (Files.isRegularFile(blissFile) && BLISS_SHADER_SHA512.equalsIgnoreCase(sha512(blissFile))) {
+                Files.writeString(statusFile, "Bliss Shaders already installed: " + blissFile + "\nVerified: " + Instant.now() + "\n", StandardCharsets.UTF_8);
+                System.out.println("[GizmoCraft World Sync] Bliss Shaders already installed at " + blissFile);
+                return;
+            }
+
+            HttpRequest request = HttpRequest.newBuilder(URI.create(BLISS_SHADER_URL))
+                    .header("User-Agent", "GizmoCraftWorldSyncClient/" + CLIENT_VERSION)
+                    .GET()
+                    .build();
+            HttpResponse<byte[]> response = httpClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                Files.writeString(statusFile, "Bliss Shaders auto-install failed: HTTP " + response.statusCode() + " at " + Instant.now() + "\n", StandardCharsets.UTF_8);
+                System.out.println("[GizmoCraft World Sync] Bliss shader download HTTP " + response.statusCode());
+                return;
+            }
+
+            Path temporaryFile = shaderpacksDir.resolve(BLISS_SHADER_FILE + ".tmp");
+            Files.write(temporaryFile, response.body());
+            String digest = sha512(temporaryFile);
+            if (!BLISS_SHADER_SHA512.equalsIgnoreCase(digest)) {
+                Files.deleteIfExists(temporaryFile);
+                Files.writeString(statusFile, "Bliss Shaders auto-install failed: SHA-512 mismatch at " + Instant.now() + "\nExpected: " + BLISS_SHADER_SHA512 + "\nActual: " + digest + "\n", StandardCharsets.UTF_8);
+                System.out.println("[GizmoCraft World Sync] Bliss shader SHA-512 mismatch");
+                return;
+            }
+
+            Files.move(temporaryFile, blissFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(statusFile, "Bliss Shaders auto-installed: " + blissFile + "\nSource: " + BLISS_SHADER_URL + "\nInstalled: " + Instant.now() + "\n", StandardCharsets.UTF_8);
+            System.out.println("[GizmoCraft World Sync] Auto-installed Bliss Shaders at " + blissFile);
+        } catch (IOException | InterruptedException error) {
+            if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+            System.out.println("[GizmoCraft World Sync] Bliss shader auto-install failed: " + error.getMessage());
+        }
+    }
+
+    private static String sha512(Path path) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-512");
+            try (java.io.InputStream input = Files.newInputStream(path)) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException error) {
+            throw new IOException("SHA-512 unavailable", error);
+        }
+    }
+
     private static void syncWorldMap(Path cacheDir) {
         try {
             Files.createDirectories(cacheDir);
             HttpRequest request = HttpRequest.newBuilder(URI.create(WORLD_MAP_URL))
-                    .header("User-Agent", "GizmoCraftWorldSyncClient/0.2.0")
+                    .header("User-Agent", "GizmoCraftWorldSyncClient/" + CLIENT_VERSION)
                     .GET()
                     .build();
             HttpResponse<String> response = httpClient().send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -73,7 +137,7 @@ public final class GizmoCraftWorldSyncClient implements ClientModInitializer {
             visitedChunks.add(snapshot.chunkX + ":" + snapshot.chunkZ);
             String payload = buildTelemetryJson(snapshot);
             HttpRequest request = HttpRequest.newBuilder(URI.create(TELEMETRY_URL))
-                    .header("User-Agent", "GizmoCraftWorldSyncClient/0.2.0")
+                    .header("User-Agent", "GizmoCraftWorldSyncClient/" + CLIENT_VERSION)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
                     .build();

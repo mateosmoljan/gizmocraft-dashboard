@@ -348,6 +348,8 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
                   <li>Open Minecraft folder: Windows <code className="rounded bg-black/35 px-1">%APPDATA%\.minecraft</code>.</li>
                   <li>Copy <code className="rounded bg-black/35 px-1">mods/{GIZMOCRAFT_WORLD_SYNC_MODPACK.jarName}</code> from the zip.</li>
                   <li>Put that <code className="rounded bg-black/35 px-1">.jar</code> in <code className="rounded bg-black/35 px-1">.minecraft/mods</code>.</li>
+                  <li>Launch Fabric with Iris/Sodium. The mod creates <code className="rounded bg-black/35 px-1">shaderpacks</code> and auto-downloads verified Bliss Shaders if missing.</li>
+                  <li>Select Bliss in Minecraft: Options → Video Settings → Shader Packs.</li>
                   <li>Do not put <code className="rounded bg-black/35 px-1">manifest.json</code> or <code className="rounded bg-black/35 px-1">README.md</code> in mods.</li>
                 </ol>
               </div>
