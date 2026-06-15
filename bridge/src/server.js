@@ -814,8 +814,56 @@ function profileForUserRow(row) {
     name: row.user_name ?? row.username,
     image: row.image ?? null,
     minecraftUuid: row.minecraft_uuid ?? null,
+    onboarding: row.onboarding ?? null,
     player: null,
   };
+}
+
+async function latestProfileOnboarding(db, email) {
+  const [rows] = await db.query(
+    `SELECT raw FROM world_events
+     WHERE type='minecraft_identity_preclaim'
+       AND JSON_UNQUOTE(JSON_EXTRACT(raw,'$.email'))=?
+     ORDER BY occurred_at DESC,id DESC LIMIT 1`,
+    [email],
+  ).catch(() => [[]]);
+  const raw = rows[0]?.raw;
+  if (!raw) return null;
+  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return {
+    minecraftStatus: parsed.minecraftStatus ?? null,
+    minecraftUsername: parsed.minecraftUsername ?? null,
+    preferences: parsed.preferences ?? null,
+  };
+}
+
+async function recordProfileOnboarding(db, email, input) {
+  const minecraftStatus = ["played_before", "has_minecraft", "no_minecraft"].includes(input?.minecraftStatus) ? input.minecraftStatus : null;
+  const minecraftUsername = minecraftStatus && minecraftStatus !== "no_minecraft" ? normalizeMinecraftUsername(input?.minecraftUsername) : null;
+  const preferences = typeof input?.preferences === "string" ? input.preferences.trim().slice(0, 500) : "";
+  if (!minecraftStatus && !preferences) return null;
+  const raw = { email, minecraftStatus, minecraftUsername, preferences };
+  await db.query(
+    "INSERT INTO world_events (type,player_uuid,message,occurred_at,raw) VALUES (?,?,?,?,CAST(? AS JSON))",
+    ["minecraft_identity_preclaim", null, `Profile onboarding saved for ${email}`, new Date(), JSON.stringify(raw)],
+  ).catch(async (error) => {
+    if (!String(error?.message ?? error).includes("world_events")) throw error;
+    await db.query(`CREATE TABLE IF NOT EXISTS world_events (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      type VARCHAR(191) NOT NULL,
+      player_uuid VARCHAR(36) NULL,
+      message TEXT NOT NULL,
+      occurred_at DATETIME(3) NOT NULL,
+      raw JSON NULL,
+      INDEX world_events_type_occurred_at_idx (type, occurred_at),
+      INDEX world_events_player_uuid_idx (player_uuid)
+    )`);
+    await db.query(
+      "INSERT INTO world_events (type,player_uuid,message,occurred_at,raw) VALUES (?,?,?,?,CAST(? AS JSON))",
+      ["minecraft_identity_preclaim", null, `Profile onboarding saved for ${email}`, new Date(), JSON.stringify(raw)],
+    );
+  });
+  return raw;
 }
 
 async function profileForPlayerRow(db, row) {
@@ -947,7 +995,9 @@ async function handleProfileForEmail(req, res) {
     FROM users u LEFT JOIN players p ON p.uuid=u.minecraft_uuid WHERE u.email=? LIMIT 1`, [email]);
   if (!rows[0]) { await db.end(); return res.status(404).json({ error: "profile not found" }); }
   const row = rows[0];
-  const profile = row.uuid ? await profileForPlayerRow(db, row) : { id: row.user_id, email, username: row.username, name: row.user_name, image: row.image ?? null, minecraftUuid: row.minecraft_uuid ?? null, player: null };
+  const onboarding = await latestProfileOnboarding(db, email);
+  const profile = row.uuid ? await profileForPlayerRow(db, row) : { id: row.user_id, email, username: row.username, name: row.user_name, image: row.image ?? null, minecraftUuid: row.minecraft_uuid ?? null, onboarding, player: null };
+  if (row.uuid) profile.onboarding = onboarding;
   await db.end();
   res.json({ profile });
 }
@@ -961,6 +1011,7 @@ async function handleUpdateProfile(req, res) {
   const hasImage = Object.prototype.hasOwnProperty.call(req.body ?? {}, "image");
   const image = hasImage ? (req.body?.image ? String(req.body.image) : null) : undefined;
   const requestedMinecraftName = normalizeMinecraftUsername(req.body?.minecraftUsername);
+  const minecraftStatus = ["played_before", "has_minecraft", "no_minecraft"].includes(req.body?.minecraftStatus) ? req.body.minecraftStatus : null;
   let minecraftUuid = req.body?.minecraftUuid ? String(req.body.minecraftUuid) : null;
   const db = await pool();
   if (!minecraftUuid && requestedMinecraftName) {
@@ -986,10 +1037,12 @@ async function handleUpdateProfile(req, res) {
   } else {
     await db.query("INSERT INTO users (id,email,username,name,image,minecraft_uuid,role,last_login_at,sign_in_count,created_at,updated_at) VALUES (UUID(),?,?,?,?,?,'PLAYER',IF(?,NOW(3),NULL),?,NOW(3),NOW(3))", [email, username, name, image ?? null, minecraftUuid, recordSignIn, recordSignIn ? 1 : 0]);
   }
+  const onboarding = await recordProfileOnboarding(db, email, { ...req.body, minecraftStatus });
   const [rows] = await db.query(`SELECT p.uuid,p.name AS player_name,p.avatar_url,p.last_seen_at,p.total_play_ms,
       u.id AS user_id,u.email,u.username,u.name AS user_name,u.image,u.minecraft_uuid
     FROM users u LEFT JOIN players p ON p.uuid=u.minecraft_uuid WHERE u.email=? LIMIT 1`, [email]);
-  const profile = rows[0]?.uuid ? await profileForPlayerRow(db, rows[0]) : profileForUserRow(rows[0] ?? { user_id: undefined, email, username, user_name: name, image, minecraft_uuid: minecraftUuid });
+  const profile = rows[0]?.uuid ? await profileForPlayerRow(db, rows[0]) : profileForUserRow(rows[0] ?? { user_id: undefined, email, username, user_name: name, image, minecraft_uuid: minecraftUuid, onboarding });
+  profile.onboarding = onboarding ?? await latestProfileOnboarding(db, email);
   await db.end();
   res.json({ profile });
 }

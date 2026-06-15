@@ -5,7 +5,7 @@ import { normalizeEmail, normalizeMinecraftUsername, usernameFromEmail } from "@
 import { notifyNewUserSignup } from "@/lib/signup-notifications";
 
 const PROFILE_DB_TIMEOUT_MS = 900;
-type ProfileUpdate = { username?: string; name?: string; image?: string | null; minecraftUsername?: string; minecraftUuid?: string; recordSignIn?: boolean };
+type ProfileUpdate = { username?: string; name?: string; image?: string | null; minecraftUsername?: string; minecraftUuid?: string; minecraftStatus?: string; preferences?: string; recordSignIn?: boolean };
 export type AppUserStats = { online: number; totalSignedIn: number; live: boolean };
 const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -312,7 +312,7 @@ export async function getOrFallbackUserProfile(input: { email: string; name?: st
 
 export async function updateUserProfile(userId: string, input: ProfileUpdate) {
   const username = input.username ? await uniqueUsername(input.username, userId) : undefined;
-  const { minecraftUsername: _minecraftUsername, recordSignIn: _recordSignIn, ...data } = input;
+  const { minecraftUsername: _minecraftUsername, minecraftStatus: _minecraftStatus, preferences: _preferences, recordSignIn: _recordSignIn, ...data } = input;
   return prisma.user.update({
     where: { id: userId },
     data: { ...data, ...(username ? { username } : {}) },

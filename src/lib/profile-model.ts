@@ -3,7 +3,12 @@ export type EditableProfileInput = {
   name?: unknown;
   image?: unknown;
   minecraftUsername?: unknown;
+  minecraftStatus?: unknown;
+  preferences?: unknown;
 };
+
+export const minecraftStatusOptions = ["played_before", "has_minecraft", "no_minecraft"] as const;
+export type MinecraftStatus = (typeof minecraftStatusOptions)[number];
 
 export function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
@@ -54,6 +59,10 @@ export function normalizeMinecraftUsername(value: unknown) {
   return cleaned;
 }
 
+export function normalizeMinecraftStatus(value: unknown): MinecraftStatus | undefined {
+  return minecraftStatusOptions.includes(value as MinecraftStatus) ? value as MinecraftStatus : undefined;
+}
+
 export function playerOnlyProfileEmail(minecraftUuid: string) {
   return `minecraft:${minecraftUuid.trim().toLowerCase()}@gizmocraft.local`;
 }
@@ -65,10 +74,14 @@ export function profileUpdateFromInput(input: EditableProfileInput) {
   const image = cleanProfileImageUrl(input.image);
   const hasImage = Object.prototype.hasOwnProperty.call(input, "image");
   const minecraftUsername = normalizeMinecraftUsername(input.minecraftUsername);
+  const minecraftStatus = normalizeMinecraftStatus(input.minecraftStatus);
+  const preferences = cleanString(input.preferences, 500);
   return {
     ...(username ? { username } : {}),
     ...(name ? { name } : {}),
     ...(hasImage ? { image: image ?? null } : {}),
-    ...(minecraftUsername ? { minecraftUsername } : {}),
+    ...(minecraftStatus ? { minecraftStatus } : {}),
+    ...(minecraftUsername && minecraftStatus !== "no_minecraft" ? { minecraftUsername } : {}),
+    ...(preferences ? { preferences } : {}),
   };
 }

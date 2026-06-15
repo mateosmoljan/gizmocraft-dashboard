@@ -298,6 +298,38 @@ async function syncServerLogSessions(db) {
   return { inserted, files: files.length };
 }
 
+async function linkPendingMinecraftClaims(db, player) {
+  const playerName = String(player?.name ?? "").trim();
+  if (!player?.uuid || !playerName) return 0;
+  const [claimRows] = await db.execute(
+    `SELECT id,raw FROM world_events
+     WHERE type='minecraft_identity_preclaim'
+       AND JSON_UNQUOTE(JSON_EXTRACT(raw,'$.minecraftStatus')) IN ('played_before','has_minecraft')
+       AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw,'$.minecraftUsername')))=LOWER(?)
+     ORDER BY occurred_at ASC,id ASC`,
+    [playerName],
+  ).catch(() => [[]]);
+  let linked = 0;
+  for (const claim of claimRows) {
+    const raw = typeof claim.raw === "string" ? JSON.parse(claim.raw) : claim.raw;
+    const email = String(raw?.email ?? "").trim().toLowerCase();
+    if (!email || email.startsWith("minecraft:")) continue;
+    const [result] = await db.execute(
+      "UPDATE users SET minecraft_uuid=COALESCE(minecraft_uuid,?), updated_at=NOW(3) WHERE email=? AND minecraft_uuid IS NULL",
+      [player.uuid, email],
+    );
+    if (result.affectedRows > 0) {
+      await db.execute("DELETE FROM users WHERE email=?", [playerOnlyProfileEmail(player.uuid)]);
+      await db.execute(
+        "INSERT INTO world_events (type,player_uuid,message,occurred_at,raw) VALUES (?,?,?,?,CAST(? AS JSON))",
+        ["minecraft_identity_linked", player.uuid, `Linked ${email} to Minecraft player ${playerName}`, new Date(), JSON.stringify({ email, minecraftUsername: playerName, minecraftUuid: player.uuid, sourceClaimId: String(claim.id) })],
+      ).catch(() => undefined);
+      linked += 1;
+    }
+  }
+  return linked;
+}
+
 async function recordInferredPlayerSession(db, playerUuid, currentPlayTicks, previousSnapshot, capturedAt) {
   const currentTicks = Number(currentPlayTicks ?? 0);
   if (currentTicks <= 0) return;
@@ -375,6 +407,7 @@ export async function syncMinecraftStats() {
       const [previousRows] = await db.execute("SELECT play_ticks,captured_at,raw_stats FROM player_stat_snapshots WHERE player_uuid=? ORDER BY captured_at DESC LIMIT 1", [row.uuid]);
       const farmAlerts = detectFarmBehavior(row, previousRows[0] ?? null, capturedAt);
       await db.execute("INSERT INTO players (uuid,name,first_seen_at,last_seen_at,total_play_ms) VALUES (?,?,NOW(),NOW(),?) ON DUPLICATE KEY UPDATE name=VALUES(name), last_seen_at=NOW(), total_play_ms=VALUES(total_play_ms)", [row.uuid, row.name, row.playTicks * 50]);
+      row.pendingClaimLinks = await linkPendingMinecraftClaims(db, row);
       await ensurePlayerOnlyUser(db, row);
       await db.execute("INSERT INTO player_stat_snapshots (player_uuid,deaths,mobs_killed,blocks_mined,blocks_placed,items_crafted,diamonds_mined,distance_cm,play_ticks,raw_stats) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON))", [row.uuid,row.deaths,row.mobsKilled,row.blocksMined,row.blocksPlaced,row.itemsCrafted,row.diamondsMined,row.distanceCm,row.playTicks,JSON.stringify(row.raw)]);
       const insertedFarmAlerts = await recordFarmAlerts(db, farmAlerts);
