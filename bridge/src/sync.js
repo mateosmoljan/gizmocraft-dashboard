@@ -8,6 +8,8 @@ const serverRoot = process.env.MINECRAFT_SERVER_ROOT ?? "/home/cisco/minecraft-s
 const worldName = process.env.MINECRAFT_WORLD_NAME ?? "gizmo-ivan-dole";
 const worldPath = path.join(serverRoot, worldName);
 const gunzipAsync = promisify(gunzip);
+const FARM_ALERT_COOLDOWN_MINUTES = Number(process.env.GIZMOCRAFT_FARM_ALERT_COOLDOWN_MINUTES ?? 30);
+const FARM_ALERT_MIN_PLAY_MINUTES = Number(process.env.GIZMOCRAFT_FARM_ALERT_MIN_PLAY_MINUTES ?? 5);
 
 function n(obj, key) { return Number(obj?.stats?.["minecraft:custom"]?.[key] ?? 0); }
 function mined(raw, block) { return Number(raw?.stats?.["minecraft:mined"]?.[block] ?? 0); }
@@ -17,6 +19,106 @@ function foodEaten(raw) {
   const used = raw?.stats?.["minecraft:used"] ?? {};
   const foodNames = ["apple", "baked_potato", "beef", "beetroot", "beetroot_soup", "bread", "carrot", "chicken", "chorus_fruit", "cod", "cooked_beef", "cooked_chicken", "cooked_cod", "cooked_mutton", "cooked_porkchop", "cooked_rabbit", "cooked_salmon", "cookie", "dried_kelp", "enchanted_golden_apple", "golden_apple", "golden_carrot", "honey_bottle", "melon_slice", "mushroom_stew", "mutton", "poisonous_potato", "porkchop", "potato", "pufferfish", "pumpkin_pie", "rabbit", "rabbit_stew", "rotten_flesh", "salmon", "spider_eye", "suspicious_stew", "sweet_berries", "glow_berries", "tropical_fish"];
   return foodNames.reduce((sum, item) => sum + Number(used[`minecraft:${item}`] ?? 0), 0);
+}
+function rawStats(row) {
+  if (!row?.raw_stats) return {};
+  if (typeof row.raw_stats === "string") {
+    try { return JSON.parse(row.raw_stats); } catch { return {}; }
+  }
+  return row.raw_stats;
+}
+function metricDelta(current, previous, reader) {
+  return Math.max(0, Number(reader(current) ?? 0) - Number(reader(previous) ?? 0));
+}
+function round(value, places = 1) {
+  const factor = 10 ** places;
+  return Math.round(Number(value) * factor) / factor;
+}
+export function detectFarmBehavior(currentRow, previousSnapshot, capturedAt = new Date()) {
+  if (!previousSnapshot) return [];
+  const current = currentRow.raw ?? rawStats(currentRow);
+  const previous = rawStats(previousSnapshot);
+  const playDeltaTicks = metricDelta(current, previous, (raw) => n(raw, "minecraft:play_time"));
+  const playMinutes = playDeltaTicks / 20 / 60;
+  if (!Number.isFinite(playMinutes) || playMinutes < FARM_ALERT_MIN_PLAY_MINUTES) return [];
+
+  const deltas = {
+    blocksMined: metricDelta(current, previous, (raw) => statTotal(raw, "minecraft:mined")),
+    blocksPlaced: metricDelta(current, previous, (raw) => statTotal(raw, "minecraft:used")),
+    itemsCrafted: metricDelta(current, previous, (raw) => statTotal(raw, "minecraft:crafted")),
+    mobKills: metricDelta(current, previous, (raw) => n(raw, "minecraft:mob_kills")),
+    diamondsMined: metricDelta(current, previous, (raw) => mined(raw, "minecraft:diamond_ore") + mined(raw, "minecraft:deepslate_diamond_ore")),
+    distanceCm: metricDelta(current, previous, (raw) => n(raw, "minecraft:walk_one_cm") + n(raw, "minecraft:sprint_one_cm") + n(raw, "minecraft:swim_one_cm") + n(raw, "minecraft:boat_one_cm")),
+  };
+  const hours = playMinutes / 60;
+  const rates = {
+    blocksMinedPerHour: deltas.blocksMined / hours,
+    blocksPlacedPerHour: deltas.blocksPlaced / hours,
+    itemsCraftedPerHour: deltas.itemsCrafted / hours,
+    mobKillsPerHour: deltas.mobKills / hours,
+    diamondsPerHour: deltas.diamondsMined / hours,
+    distanceMPerMinute: (deltas.distanceCm / 100) / playMinutes,
+  };
+  const base = {
+    playerUuid: currentRow.uuid,
+    playerName: currentRow.name,
+    capturedAt: capturedAt instanceof Date ? capturedAt.toISOString() : new Date(capturedAt).toISOString(),
+    playMinutes: round(playMinutes),
+    deltas,
+    rates: Object.fromEntries(Object.entries(rates).map(([key, value]) => [key, round(value)])),
+  };
+  const alerts = [];
+  if (rates.mobKillsPerHour >= 600 && rates.distanceMPerMinute < 35) {
+    alerts.push({ ...base, category: "possible_xp_mob_farm", severity: rates.mobKillsPerHour >= 1200 ? "high" : "medium", reason: `${currentRow.name} killed ${deltas.mobKills} mobs in ${round(playMinutes)} min with low travel movement.` });
+  }
+  if (rates.blocksMinedPerHour >= 3600) {
+    alerts.push({ ...base, category: "possible_mining_grind", severity: rates.blocksMinedPerHour >= 7200 ? "high" : "medium", reason: `${currentRow.name} mined ${deltas.blocksMined} blocks in ${round(playMinutes)} min.` });
+  }
+  if (rates.diamondsPerHour >= 90 && deltas.diamondsMined >= 12) {
+    alerts.push({ ...base, category: "possible_ore_saturation", severity: "medium", reason: `${currentRow.name} mined ${deltas.diamondsMined} diamond ore blocks in ${round(playMinutes)} min.` });
+  }
+  if (rates.blocksPlacedPerHour >= 2400 || rates.itemsCraftedPerHour >= 2400) {
+    alerts.push({ ...base, category: "possible_mass_build_or_craft", severity: "low", reason: `${currentRow.name} placed/crafted at a very high rate for ${round(playMinutes)} min.` });
+  }
+  return alerts;
+}
+async function sendFarmAlertNotification(alert) {
+  const webhookUrl = process.env.GIZMOCRAFT_ALERT_WEBHOOK_URL;
+  const text = [`GizmoCraft ${alert.severity} alert: ${alert.category}`, alert.reason, `Window: ${alert.playMinutes} min`, `Player: ${alert.playerName}`].join("\n");
+  if (webhookUrl) {
+    await fetch(webhookUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, alert }) }).catch((error) => console.warn("Farm alert webhook failed", error));
+  }
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${resendKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: process.env.GIZMOCRAFT_ALERT_FROM || "GizmoCraft <alerts@resend.dev>",
+        to: process.env.GIZMOCRAFT_ALERT_EMAIL || process.env.NEW_USER_NOTIFY_EMAIL || "sudodosu99@gmail.com",
+        subject: `GizmoCraft ${alert.severity} farm alert: ${alert.playerName}`,
+        text,
+      }),
+    }).catch((error) => console.warn("Farm alert email failed", error));
+  }
+}
+async function recordFarmAlerts(db, alerts) {
+  let inserted = 0;
+  for (const alert of alerts) {
+    const [recentRows] = await db.execute(
+      `SELECT id FROM world_events
+       WHERE type='farm_alert' AND player_uuid=? AND message LIKE ?
+       AND occurred_at >= DATE_SUB(NOW(3), INTERVAL ? MINUTE)
+       LIMIT 1`,
+      [alert.playerUuid, `%${alert.category}%`, FARM_ALERT_COOLDOWN_MINUTES],
+    );
+    if (recentRows[0]) continue;
+    const message = `[${alert.category}] ${alert.reason}`;
+    await db.execute("INSERT INTO world_events (type,player_uuid,message,occurred_at,raw) VALUES (?,?,?,?,CAST(? AS JSON))", ["farm_alert", alert.playerUuid, message, alert.capturedAt, JSON.stringify(alert)]);
+    inserted += 1;
+    await sendFarmAlertNotification(alert);
+  }
+  return inserted;
 }
 function normalizeUsername(value) {
   const username = String(value ?? "")
@@ -256,11 +358,15 @@ export async function syncMinecraftStats() {
         playTicks: n(raw, "minecraft:play_time"),
         raw
       };
-      const [previousRows] = await db.execute("SELECT play_ticks,captured_at FROM player_stat_snapshots WHERE player_uuid=? ORDER BY captured_at DESC LIMIT 1", [row.uuid]);
+      const capturedAt = new Date();
+      const [previousRows] = await db.execute("SELECT play_ticks,captured_at,raw_stats FROM player_stat_snapshots WHERE player_uuid=? ORDER BY captured_at DESC LIMIT 1", [row.uuid]);
+      const farmAlerts = detectFarmBehavior(row, previousRows[0] ?? null, capturedAt);
       await db.execute("INSERT INTO players (uuid,name,first_seen_at,last_seen_at,total_play_ms) VALUES (?,?,NOW(),NOW(),?) ON DUPLICATE KEY UPDATE name=VALUES(name), last_seen_at=NOW(), total_play_ms=VALUES(total_play_ms)", [row.uuid, row.name, row.playTicks * 50]);
       await ensurePlayerOnlyUser(db, row);
       await db.execute("INSERT INTO player_stat_snapshots (player_uuid,deaths,mobs_killed,blocks_mined,blocks_placed,items_crafted,diamonds_mined,distance_cm,play_ticks,raw_stats) VALUES (?,?,?,?,?,?,?,?,?,CAST(? AS JSON))", [row.uuid,row.deaths,row.mobsKilled,row.blocksMined,row.blocksPlaced,row.itemsCrafted,row.diamondsMined,row.distanceCm,row.playTicks,JSON.stringify(row.raw)]);
-      await recordInferredPlayerSession(db, row.uuid, row.playTicks, previousRows[0] ?? null, new Date());
+      const insertedFarmAlerts = await recordFarmAlerts(db, farmAlerts);
+      await recordInferredPlayerSession(db, row.uuid, row.playTicks, previousRows[0] ?? null, capturedAt);
+      if (insertedFarmAlerts) row.farmAlerts = insertedFarmAlerts;
       players.push(row);
     }
     const logSessions = await syncServerLogSessions(db);
