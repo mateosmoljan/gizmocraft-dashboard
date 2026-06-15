@@ -11,6 +11,12 @@ describe("GizmoCraft shell logo caching", () => {
     assert.match(shellSource, /className="[^"]*size-14[^"]*shrink-0[^"]*"/);
   });
 
+  it("keeps the desktop navigation fixed while page content scrolls", () => {
+    assert.match(shellSource, /<aside className="[^"]*lg:fixed[^"]*lg:inset-y-0[^"]*lg:left-0[^"]*lg:h-screen[^"]*lg:overflow-y-auto[^"]*"/);
+    assert.match(shellSource, /<main className="[^"]*lg:ml-72[^"]*"/);
+    assert.doesNotMatch(shellSource, /lg:sticky/);
+  });
+
   it("serves brand and icon image assets cache-first from the service worker", () => {
     assert.match(serviceWorkerSource, /gizmocraft-shell-v4/);
     assert.match(serviceWorkerSource, /"\/brand\/gizmocraft-floating-world-logo\.png"/);

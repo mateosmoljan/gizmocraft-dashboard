@@ -45,10 +45,10 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
   const pending = pendingHref !== null && pendingHref !== pathname;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] text-white">
+    <div className="relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,#245c43_0,#07111f_35%,#040913_100%)] text-white">
       <MinecraftScene />
       <div className="relative z-10 flex min-h-screen flex-col lg:flex-row">
-        <aside className="flex flex-col border-b border-white/10 bg-slate-950/75 px-4 py-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
+        <aside className="flex flex-col border-b border-white/10 bg-slate-950/75 px-4 py-4 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:z-20 lg:h-screen lg:w-72 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
           <div className="flex items-center gap-3">
             <img
               src="/brand/gizmocraft-floating-world-logo.png"
@@ -104,7 +104,7 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 px-5 py-6 md:px-8 lg:px-10">
+        <main className="min-w-0 flex-1 px-5 py-6 md:px-8 lg:ml-72 lg:px-10">
           {children}
         </main>
       </div>
