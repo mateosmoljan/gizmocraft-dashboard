@@ -102,6 +102,18 @@ async function sendFarmAlertNotification(alert) {
     }).catch((error) => console.warn("Farm alert email failed", error));
   }
 }
+async function ensureWorldEventsTable(db) {
+  await db.execute(`CREATE TABLE IF NOT EXISTS world_events (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(191) NOT NULL,
+    player_uuid VARCHAR(36) NULL,
+    message TEXT NOT NULL,
+    occurred_at DATETIME(3) NOT NULL,
+    raw JSON NULL,
+    INDEX world_events_type_occurred_at_idx (type, occurred_at),
+    INDEX world_events_player_uuid_idx (player_uuid)
+  )`);
+}
 async function recordFarmAlerts(db, alerts) {
   let inserted = 0;
   for (const alert of alerts) {
@@ -325,6 +337,7 @@ async function recordInferredPlayerSession(db, playerUuid, currentPlayTicks, pre
 export async function syncMinecraftStats() {
   const { pool } = await import("./mysql.js");
   const db = await pool();
+  await ensureWorldEventsTable(db);
   await db.execute(
     "UPDATE sync_runs SET status='error', finished_at=NOW(3), details=CAST(? AS JSON) WHERE status='running' AND finished_at IS NULL AND started_at < DATE_SUB(NOW(3), INTERVAL 5 MINUTE)",
     [JSON.stringify({ message: "stale running sync cleaned before new run" })],
