@@ -117,9 +117,12 @@ async function bridgeTouchAppActivity(input: { email: string; name?: string | nu
   return { ...data.stats, live: true };
 }
 
-async function databaseTouchAppActivity(email: string) {
-  const now = new Date();
-  await withProfileDbTimeout(prisma.user.update({ where: { email: normalizeEmail(email) }, data: { appLastSeenAt: now } }));
+async function bridgeReadAppStats() {
+  const data = await bridgeJson<{ stats: AppUserStats }>("/api/app-stats");
+  return { ...data.stats, live: true };
+}
+
+async function databaseReadAppStats() {
   const onlineSince = new Date(Date.now() - APP_ONLINE_WINDOW_MS);
   const signedInUserWhere = { signInCount: { gt: 0 }, NOT: { email: { startsWith: "minecraft:" } } };
   const [online, totalSignedIn] = await withProfileDbTimeout(Promise.all([
@@ -127,6 +130,27 @@ async function databaseTouchAppActivity(email: string) {
     prisma.user.count({ where: signedInUserWhere }),
   ]));
   return { online, totalSignedIn, live: true };
+}
+
+async function databaseTouchAppActivity(email: string) {
+  const now = new Date();
+  await withProfileDbTimeout(prisma.user.update({ where: { email: normalizeEmail(email) }, data: { appLastSeenAt: now } }));
+  return databaseReadAppStats();
+}
+
+export async function readAppUserStats(): Promise<AppUserStats> {
+  try {
+    return await bridgeReadAppStats();
+  } catch (bridgeError) {
+    console.warn("App stats bridge unavailable; trying direct profile database", bridgeError);
+  }
+
+  try {
+    return await databaseReadAppStats();
+  } catch (dbError) {
+    console.warn("App stats database unavailable", dbError);
+    return { online: 0, totalSignedIn: 0, live: false };
+  }
 }
 
 export async function touchAndReadAppUserStats(input: string | { email: string; name?: string | null; username?: string | null }): Promise<AppUserStats> {

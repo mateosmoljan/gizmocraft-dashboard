@@ -7,10 +7,12 @@ import { Activity, BarChart3, Camera, Globe2, Settings, Trophy, UserRound, Users
 import { gizmoNavItems } from "@/lib/navigation";
 import { InstallAppButton } from "@/components/install-app-button";
 import { MinecraftScene } from "@/components/minecraft-scene";
+import { readClientCache, writeClientCache } from "@/lib/client-cache";
 
 const icons = [BarChart3, Globe2, Camera, UserRound, Trophy, Activity, Users, Settings];
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
 type AppStatsState = AppStats | null;
+const APP_STATS_TOTAL_CACHE_KEY = "gizmocraft:max-google-users-total";
 
 export function GizmoShell({ children }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const pathname = usePathname();
@@ -23,19 +25,41 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
 
   useEffect(() => {
     let cancelled = false;
+    const cachedTotal = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
+    if (typeof cachedTotal === "number" && Number.isFinite(cachedTotal)) {
+      setAppStats({ online: 0, totalSignedIn: cachedTotal, live: false });
+    }
+
+    function withNonDecreasingTotal(stats: AppStats) {
+      const previous = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
+      const previousTotal = typeof previous === "number" && Number.isFinite(previous) ? previous : 0;
+      const totalSignedIn = Math.max(previousTotal, Number(stats.totalSignedIn ?? 0));
+      writeClientCache(APP_STATS_TOTAL_CACHE_KEY, totalSignedIn);
+      return { ...stats, totalSignedIn };
+    }
+
     async function loadAppStats() {
       const res = await fetch("/api/app-stats", { cache: "no-store" });
       if (!res.ok) {
-        if (!cancelled) setAppStats(null);
+        if (!cancelled) {
+          const fallbackTotal = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
+          setAppStats(typeof fallbackTotal === "number" ? { online: 0, totalSignedIn: fallbackTotal, live: false } : null);
+        }
         return;
       }
       const data = await res.json();
       if (!cancelled) {
-        setAppStats(data.stats?.live ? data.stats : null);
+        setAppStats(data.stats ? withNonDecreasingTotal(data.stats) : null);
       }
     }
+    async function touchAppActivity() {
+      await fetch("/api/app-stats", { method: "POST", cache: "no-store" }).catch(() => undefined);
+    }
     void loadAppStats();
-    const interval = window.setInterval(() => void loadAppStats(), 60_000);
+    void touchAppActivity().then(loadAppStats);
+    const interval = window.setInterval(() => {
+      void touchAppActivity().then(loadAppStats);
+    }, 60_000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -100,7 +124,7 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
                 <p className="text-xs text-slate-400">Google users total</p>
               </div>
             </div>
-            <p className="mt-3 text-[11px] text-slate-500">{appStats ? "Live app activity only, not Minecraft players." : "Live app activity unavailable."}</p>
+            <p className="mt-3 text-[11px] text-slate-500">{appStats?.live ? "Live app activity only, not Minecraft players." : appStats ? "Showing saved Google total; live activity unavailable." : "Live app activity unavailable."}</p>
           </div>
         </aside>
 
