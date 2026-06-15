@@ -13,6 +13,7 @@ const icons = [BarChart3, Globe2, Camera, UserRound, Trophy, Activity, Users, Se
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
 type AppStatsState = AppStats | null;
 const APP_STATS_TOTAL_CACHE_KEY = "gizmocraft:max-google-users-total";
+const APP_STATS_ACTIVE_CACHE_KEY = "gizmocraft:last-active-app-users";
 
 export function GizmoShell({ children }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const pathname = usePathname();
@@ -26,16 +27,22 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
   useEffect(() => {
     let cancelled = false;
     const cachedTotal = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
+    const cachedOnline = readClientCache<number>(APP_STATS_ACTIVE_CACHE_KEY);
     if (typeof cachedTotal === "number" && Number.isFinite(cachedTotal)) {
-      setAppStats({ online: 0, totalSignedIn: cachedTotal, live: false });
+      const online = typeof cachedOnline === "number" && Number.isFinite(cachedOnline) ? cachedOnline : 0;
+      setAppStats({ online, totalSignedIn: cachedTotal, live: false });
     }
 
-    function withNonDecreasingTotal(stats: AppStats) {
+    function withStableStats(stats: AppStats) {
       const previous = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
       const previousTotal = typeof previous === "number" && Number.isFinite(previous) ? previous : 0;
+      const previousActive = readClientCache<number>(APP_STATS_ACTIVE_CACHE_KEY);
+      const previousOnline = typeof previousActive === "number" && Number.isFinite(previousActive) ? previousActive : 0;
       const totalSignedIn = Math.max(previousTotal, Number(stats.totalSignedIn ?? 0));
+      const online = Math.max(previousOnline, Number(stats.online ?? 0));
       writeClientCache(APP_STATS_TOTAL_CACHE_KEY, totalSignedIn);
-      return { ...stats, totalSignedIn };
+      if (online > 0) writeClientCache(APP_STATS_ACTIVE_CACHE_KEY, online);
+      return { ...stats, online, totalSignedIn };
     }
 
     async function loadAppStats() {
@@ -43,13 +50,15 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
       if (!res.ok) {
         if (!cancelled) {
           const fallbackTotal = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
-          setAppStats(typeof fallbackTotal === "number" ? { online: 0, totalSignedIn: fallbackTotal, live: false } : null);
+          const fallbackOnline = readClientCache<number>(APP_STATS_ACTIVE_CACHE_KEY);
+          const online = typeof fallbackOnline === "number" && Number.isFinite(fallbackOnline) ? fallbackOnline : 0;
+          setAppStats(typeof fallbackTotal === "number" ? { online, totalSignedIn: fallbackTotal, live: false } : null);
         }
         return;
       }
       const data = await res.json();
       if (!cancelled) {
-        setAppStats(data.stats ? withNonDecreasingTotal(data.stats) : null);
+        setAppStats(data.stats ? withStableStats(data.stats) : null);
       }
     }
     async function touchAppActivity() {

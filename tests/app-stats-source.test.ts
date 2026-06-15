@@ -24,3 +24,10 @@ test("sidebar preserves the all-time Google user total across refreshes", () => 
   assert.match(shellSource, /method: "POST"/);
   assert.match(shellSource, /Showing saved Google total; live activity unavailable/);
 });
+
+test("sidebar preserves last active count during refresh heartbeat", () => {
+  const shellSource = readFileSync("src/components/gizmo-shell.tsx", "utf8");
+  assert.match(shellSource, /APP_STATS_ACTIVE_CACHE_KEY = "gizmocraft:last-active-app-users"/);
+  assert.match(shellSource, /Math\.max\(previousOnline, Number\(stats\.online \?\? 0\)\)/);
+  assert.doesNotMatch(shellSource, /setAppStats\(\{ online: 0, totalSignedIn: cachedTotal, live: false \}\)/);
+});
