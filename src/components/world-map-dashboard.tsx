@@ -393,23 +393,6 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
         </aside>
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-2xl font-black">Loaded from spawn outward</h2>
-            <p className="mt-1 text-sm text-slate-400">Each tile is a Minecraft region file (`512 × 512` blocks). Empty areas are not loaded yet, not deleted.</p>
-          </div>
-          <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">{data.regions.length} live tiles</span>
-        </div>
-        <div className="mt-4 grid max-h-72 gap-2 overflow-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
-          {data.regions.length ? data.regions.map((region) => (
-            <div key={region.id} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm">
-              <p className="font-black text-white">Region {region.regionX}, {region.regionZ}</p>
-              <p className="text-slate-400">X {format(region.minBlockX)} → {format(region.maxBlockX)} · Z {format(region.minBlockZ)} → {format(region.maxBlockZ)}</p>
-            </div>
-          )) : <p className="text-sm text-slate-300">No live region list available yet.</p>}
-        </div>
-      </section>
     </div>
   );
 }

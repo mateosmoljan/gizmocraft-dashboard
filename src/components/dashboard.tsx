@@ -13,7 +13,18 @@ function format(value: number) { return new Intl.NumberFormat("en").format(value
 type DashboardView = "overview" | "players" | "boards";
 type DashboardData = { players: DashboardPlayer[]; worldStats: DashboardWorld; boards: typeof fallbackBoards; live: boolean };
 const DASHBOARD_CACHE_KEY = "gizmocraft:last-dashboard-data:v2-live-status";
+const LIVE_REFRESH_MS = 30_000;
 const initialDashboardData = (): DashboardData => ({ players: fallbackPlayers, worldStats: fallbackWorldStats, boards: fallbackBoards, live: false });
+
+function formatRelativeRefresh(lastFetchedAt: number | null, now: number) {
+  if (!lastFetchedAt) return "not fetched this session yet";
+  const seconds = Math.max(0, Math.round((now - lastFetchedAt) / 1000));
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds ? `${minutes}m ${remainingSeconds}s ago` : `${minutes}m ago`;
+}
 
 function formatBoardValue(value: number, suffix: string) {
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(2));
@@ -53,15 +64,20 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   const [data, setData] = useState<DashboardData>(initialDashboardData);
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   async function refresh(showSkeleton = false) {
     if (showSkeleton) setRefreshing(true);
     try {
-      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      const res = await fetch(`/api/dashboard?ts=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Dashboard data failed: ${res.status}`);
       const nextData = await res.json();
       setData(nextData);
       writeClientCache(DASHBOARD_CACHE_KEY, nextData);
+      const fetchedAt = Date.now();
+      setLastFetchedAt(fetchedAt);
+      setNow(fetchedAt);
       setFailed(false);
     } catch {
       setFailed(true);
@@ -73,10 +89,23 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   useEffect(() => {
     const cached = readClientCache<DashboardData>(DASHBOARD_CACHE_KEY);
     if (cached) setData(cached);
-    void refresh(false);
-    const timer = window.setInterval(() => { refresh().catch(() => undefined); }, 30000);
+
+    async function refreshVisibleDashboard() {
+      if (document.visibilityState !== "visible") return;
+      await refresh(false);
+    }
+
+    void refreshVisibleDashboard();
+    const interval = window.setInterval(() => void refreshVisibleDashboard(), LIVE_REFRESH_MS);
+    const clock = window.setInterval(() => setNow(Date.now()), 5_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshVisibleDashboard();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      window.clearInterval(timer);
+      window.clearInterval(interval);
+      window.clearInterval(clock);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 
@@ -86,9 +115,9 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
 
   return (
     <div className="space-y-6">
-      <Hero worldStats={currentWorldStats} live={Boolean(data.live)} view={view} refreshing={refreshing} failed={failed} onRefresh={() => void refresh(true)} />
+      <Hero worldStats={currentWorldStats} live={Boolean(data.live)} view={view} refreshing={refreshing} failed={failed} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} onRefresh={() => void refresh(true)} />
       {view === "overview" ? <DashboardProfileSummary /> : null}
-      {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data.live)} refreshing={refreshing} /> : null}
+      {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data.live)} refreshing={refreshing} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} /> : null}
       {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data.live)} refreshing={refreshing} /> : null}
       {view === "boards" ? <BoardsSection players={currentPlayers} boards={currentBoards} refreshing={refreshing} /> : null}
     </div>
@@ -99,7 +128,7 @@ function DataSkeleton({ className = "h-6 w-24" }: { className?: string }) {
   return <span className={`block animate-pulse rounded-lg bg-emerald-200/15 ${className}`} aria-label="Loading data" />;
 }
 
-function Hero({ worldStats, live, view, refreshing, failed, onRefresh }: { worldStats: DashboardWorld; live: boolean; view: DashboardView; refreshing: boolean; failed: boolean; onRefresh: () => void }) {
+function Hero({ worldStats, live, view, refreshing, failed, lastFetchedLabel, onRefresh }: { worldStats: DashboardWorld; live: boolean; view: DashboardView; refreshing: boolean; failed: boolean; lastFetchedLabel: string; onRefresh: () => void }) {
   const titles = {
     overview: ["Minecraft Overview", "The clean world snapshot: online state, top score, last sync, and quick links."],
     players: ["Player cards", "One page for tracked players, profiles, and the stats Mateo will roast later."],
@@ -122,19 +151,20 @@ function Hero({ worldStats, live, view, refreshing, failed, onRefresh }: { world
         <p className="text-sm text-lime-200">{refreshing ? "Refreshing data" : live ? "Live bridge data" : failed ? "Showing last loaded data" : "Last loaded data"}</p>
         {refreshing ? <DataSkeleton className="ml-auto mt-2 h-7 w-36" /> : <p className="text-xl font-bold">{worldStats.name}</p>}
         {refreshing ? <DataSkeleton className="ml-auto mt-2 h-4 w-44" /> : <p className="text-sm text-slate-300">{worldStats.difficulty} · {worldStats.trackedPlayers} players tracked</p>}
+        <p className="mt-2 text-xs text-lime-100/80">Auto-refreshes every 30s while open · fetched {lastFetchedLabel}</p>
         <button type="button" onClick={onRefresh} disabled={refreshing} className="mt-3 rounded-full bg-lime-300 px-3 py-1.5 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-70">{refreshing ? "Refreshing…" : "Refresh data"}</button>
       </div>
     </header>
   );
 }
 
-function OverviewSection({ players, worldStats, live, refreshing }: { players: DashboardPlayer[]; worldStats: DashboardWorld; live: boolean; refreshing: boolean }) {
+function OverviewSection({ players, worldStats, live, refreshing, lastFetchedLabel }: { players: DashboardPlayer[]; worldStats: DashboardWorld; live: boolean; refreshing: boolean; lastFetchedLabel: string }) {
   const top = players[0] ?? null;
   const statCards = [
     ["Online", live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable", explainStat("Online")],
     ["Top score", top ? format(top.score) : null, explainStat("Top score")],
-    ["Last sync", worldStats.lastSync, "When the bridge last loaded fresh Minecraft world/player data into the dashboard."],
-    ["Mode", refreshing ? null : live ? "Live · 30s refresh" : "Last loaded data", "Shows whether this card is using live bridge data or the last loaded snapshot."],
+    ["Last database sync", worldStats.lastSync, "When the laptop bridge last loaded fresh Minecraft world/player data into the dashboard database."],
+    ["Website fetch", refreshing ? null : lastFetchedLabel, "How long ago this browser sent a no-cache request to the dashboard API."],
   ] as const;
 
   return (
