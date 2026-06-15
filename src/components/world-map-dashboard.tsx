@@ -277,7 +277,7 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
   async function refresh(showBusy = false) {
     if (showBusy) setRefreshing(true);
     try {
-      const res = await fetch("/api/world-map", { cache: showBusy ? "no-store" : "default" });
+      const res = await fetch(`/api/world-map?ts=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`World map failed: ${res.status}`);
       const next = await res.json();
       setData(next);

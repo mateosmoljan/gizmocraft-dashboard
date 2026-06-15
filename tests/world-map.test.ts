@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { parseRegionFileName, regionToBlockBounds, emptyWorldMapData, mapMemoryMetadata, GIZMOCRAFT_WORLD_SYNC_MODPACK, WORLD_MAP_CLIENT_CACHE_KEY, normalizeWorldMapTelemetry, mergeTrackingTelemetry } from "../src/lib/world-map";
 
@@ -46,6 +47,12 @@ test("world sync modpack download metadata points at a public zip", () => {
   assert.match(GIZMOCRAFT_WORLD_SYNC_MODPACK.href, /^\/downloads\/.*\.zip$/);
   assert.equal(GIZMOCRAFT_WORLD_SYNC_MODPACK.version, "0.2.0");
   assert.match(GIZMOCRAFT_WORLD_SYNC_MODPACK.status, /Live position/);
+});
+
+test("world map dashboard polls uncached live map data", () => {
+  const source = readFileSync("src/components/world-map-dashboard.tsx", "utf8");
+  assert.match(source, /window\.setInterval\(\(\) => void refresh\(false\), POLL_MS\)/);
+  assert.match(source, /fetch\(`\/api\/world-map\?ts=\$\{Date\.now\(\)\}`, \{ cache: "no-store" \}\)/);
 });
 
 test("normalizeWorldMapTelemetry sanitizes live player coordinates and visited chunk", () => {

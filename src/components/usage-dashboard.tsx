@@ -8,6 +8,7 @@ import { readClientCache, writeClientCache } from "@/lib/client-cache";
 
 const USAGE_CACHE_KEY = "gizmocraft:last-usage-data";
 const SETTINGS_CACHE_KEY = "gizmocraft:last-chunk-settings";
+const LIVE_REFRESH_MS = 30_000;
 
 export function UsageDashboard({ initialUsage, initialChunkSettings }: { initialUsage: ServerUsageData; initialChunkSettings: ChunkSettings }) {
   const [usage, setUsage] = useState(initialUsage);
@@ -42,9 +43,9 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
     if (cached) setChunkSettings({ ...cached, live: false, note: initialChunkSettings.note ?? "Showing last loaded chunk settings while live settings refresh." });
   }, [initialChunkSettings]);
 
-  async function refreshUsage() {
+  async function refreshUsage(showBusy = true) {
     setError(null);
-    setRefreshing(true);
+    if (showBusy) setRefreshing(true);
     try {
       const [usageRes, settingsRes] = await Promise.all([
         fetch(`/api/usage?ts=${Date.now()}`, { cache: "no-store" }),
@@ -64,9 +65,31 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
     } catch (err) {
       setError(err instanceof Error ? err.message : "refresh failed");
     } finally {
-      setRefreshing(false);
+      if (showBusy) setRefreshing(false);
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshLiveUsage(showBusy = false) {
+      if (document.visibilityState !== "visible") return;
+      await refreshUsage(showBusy);
+      if (!cancelled) setRefreshing(false);
+    }
+
+    void refreshLiveUsage(false);
+    const interval = window.setInterval(() => void refreshLiveUsage(false), LIVE_REFRESH_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshLiveUsage(false);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
 
   async function saveChunkSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,12 +133,12 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
           </div>
           <div className="flex flex-col gap-3 md:items-end">
             <div className={`rounded-2xl border px-5 py-4 text-left md:text-right ${usage.live ? "border-lime-300/30 bg-lime-300/10" : "border-amber-300/30 bg-amber-300/10"}`}>
-              <p className={usage.live ? "text-sm text-lime-200" : "text-sm text-amber-200"}>{refreshing ? "Refreshing data" : usage.live ? "Live" : "Showing last loaded data"}</p>
+              <p className={usage.live ? "text-sm text-lime-200" : "text-sm text-amber-200"}>{refreshing ? "Refreshing data" : usage.live ? "Live · 30s refresh" : "Showing last loaded data"}</p>
               {refreshing ? <UsageSkeleton className="ml-auto mt-2 h-4 w-36" /> : <p className="mt-1 text-xs text-slate-300">Checked {formatZagrebTime(usage.checkedAt)}</p>}
             </div>
             <button
               type="button"
-              onClick={refreshUsage}
+              onClick={() => void refreshUsage(true)}
               disabled={refreshing}
               className="rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-200 disabled:cursor-wait disabled:opacity-70"
             >
