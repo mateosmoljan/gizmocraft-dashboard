@@ -6,6 +6,7 @@ import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { formatPlaytimeHours } from "@/lib/playtime";
 import { DashboardProfileSummary } from "@/components/dashboard-profile-summary";
+import { DataExplainButton } from "@/components/data-explain-button";
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
@@ -17,6 +18,35 @@ const initialDashboardData = (): DashboardData => ({ players: fallbackPlayers, w
 function formatBoardValue(value: number, suffix: string) {
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(2));
   return `${format(rounded)} ${suffix}`;
+}
+
+const statExplanations: Record<string, string> = {
+  Online: "Current Minecraft server player count from the live bridge when it is reachable.",
+  "Top score": "Highest current GizmoCraft score among tracked players, based on the dashboard score formula.",
+  "Last database sync": "When the laptop bridge last loaded fresh Minecraft world/player data into the dashboard database.",
+  "Website fetch": "How long ago this browser sent a no-cache request to the dashboard API.",
+  Score: "Combined activity score used to rank players across mining, mobs, travel, crafting, and survival stats.",
+  Diamonds: "Diamond ore mined by this player from Minecraft stats.",
+  "Mobs killed": "Total hostile/passive mobs killed by this player from Minecraft stats.",
+  "Total playtime": "Total time this player has spent in the world, converted from Minecraft play ticks.",
+  Playtime: "Total time this player has spent in the world, converted from Minecraft play ticks.",
+  Deaths: "Number of times this player has died in the world.",
+  Mined: "Total blocks mined by this player across tracked Minecraft stats.",
+  Mobs: "Total mobs killed by this player from Minecraft stats.",
+  Distance: "Approximate distance traveled by this player, converted from Minecraft centimeters to kilometers.",
+  Placed: "Total blocks placed by this player.",
+  Crafted: "Total items crafted by this player.",
+  Food: "Total food items eaten by this player.",
+  "Damage taken": "Total damage this player has taken, as reported by Minecraft stats.",
+  Loading: "This data slot is waiting for the next dashboard refresh.",
+};
+
+function explainStat(label: string) {
+  return statExplanations[label] ?? `Explanation for ${label}.`;
+}
+
+function boardExplanation(title: string, metric: string) {
+  return `${title} ranks tracked players by ${metric}. The podium updates from live bridge data when available.`;
 }
 
 export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView }) {
@@ -101,17 +131,20 @@ function Hero({ worldStats, live, view, refreshing, failed, onRefresh }: { world
 function OverviewSection({ players, worldStats, live, refreshing }: { players: DashboardPlayer[]; worldStats: DashboardWorld; live: boolean; refreshing: boolean }) {
   const top = players[0] ?? null;
   const statCards = [
-    ["Online", live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable"],
-    ["Top score", top ? format(top.score) : null],
-    ["Last sync", worldStats.lastSync],
-    ["Mode", refreshing ? null : live ? "Live · 30s refresh" : "Last loaded data"],
+    ["Online", live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable", explainStat("Online")],
+    ["Top score", top ? format(top.score) : null, explainStat("Top score")],
+    ["Last sync", worldStats.lastSync, "When the bridge last loaded fresh Minecraft world/player data into the dashboard."],
+    ["Mode", refreshing ? null : live ? "Live · 30s refresh" : "Last loaded data", "Shows whether this card is using live bridge data or the last loaded snapshot."],
   ] as const;
 
   return (
     <>
       <div className="grid gap-4 md:grid-cols-4">
-        {statCards.map(([k, v]) => (
-          <div key={k} className="rounded-2xl border border-white/10 bg-white/8 p-5 backdrop-blur"><p className="text-sm text-slate-400">{k}</p>{refreshing ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v ?? "No data"}</p>}</div>
+        {statCards.map(([k, v, explanation]) => (
+          <div key={k} className="rounded-2xl border border-white/10 bg-white/8 p-5 backdrop-blur">
+            <div className="flex items-start justify-between gap-3"><p className="text-sm text-slate-400">{k}</p><DataExplainButton label={k} explanation={explanation} /></div>
+            {refreshing ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v ?? "No data"}</p>}
+          </div>
         ))}
       </div>
       <section className="grid gap-5 lg:grid-cols-3">
@@ -119,7 +152,7 @@ function OverviewSection({ players, worldStats, live, refreshing }: { players: D
           <p className="text-sm uppercase tracking-[0.3em] text-emerald-200/70">Current king</p>
           {refreshing ? <DataSkeleton className="mt-3 h-12 w-60" /> : top ? <h2 className="mt-2 text-4xl font-black">{top.avatar} {top.name}</h2> : <h2 className="mt-2 text-2xl font-black text-slate-300">No player data loaded yet</h2>}
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Stat label="Score" value={!refreshing && top ? format(top.score) : null} />
+            <Stat label="Score" value={!refreshing && top ? format(top.score) : null} explanation={explainStat("Score")} />
             <Stat label="Diamonds" value={!refreshing && top ? String(top.diamonds) : null} />
             <Stat label="Mobs killed" value={!refreshing && top ? format(top.mobsKilled) : null} />
             <Stat label="Total playtime" value={!refreshing && top ? formatPlaytimeHours(top.playHours) : null} />
@@ -203,7 +236,10 @@ function BoardsSection({ players, boards, refreshing }: { players: DashboardPlay
           const podium = ranked.slice(0, 3);
           return (
             <div key={b.title} className="rounded-2xl border border-emerald-300/10 bg-emerald-300/8 p-4">
-              <p className="text-sm text-emerald-200">{b.title} · {b.metric}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-emerald-200">{b.title} · {b.metric}</p>
+                <DataExplainButton label={b.title} explanation={boardExplanation(b.title, b.metric)} />
+              </div>
               {refreshing ? <DataSkeleton className="mt-2 h-7 w-36" /> : winner ? <p className="mt-1 text-xl font-black">{winner.name}</p> : <p className="mt-1 text-sm font-bold text-slate-300">No player data loaded yet</p>}
               {refreshing ? <DataSkeleton className="mt-2 h-4 w-56" /> : winner ? <p className="text-sm text-slate-300">{formatBoardValue(Number(winner[b.field]), b.suffix)} · {"roast" in b ? b.roast : "top tracked player"}</p> : <p className="text-sm text-slate-400">Waiting for live bridge data.</p>}
               <div className="mt-3 space-y-2">
@@ -227,4 +263,11 @@ function BoardsSection({ players, boards, refreshing }: { players: DashboardPlay
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | null }) { return <div className="rounded-xl bg-black/25 p-3"><p className="text-slate-400">{label}</p><p className="font-bold text-white">{value ?? "No data"}</p></div>; }
+function Stat({ label, value, explanation = explainStat(label) }: { label: string; value: string | null; explanation?: string }) {
+  return (
+    <div className="rounded-xl bg-black/25 p-3">
+      <div className="flex items-start justify-between gap-3"><p className="text-slate-400">{label}</p><DataExplainButton label={label} explanation={explanation} /></div>
+      <p className="mt-1 font-bold text-white">{value ?? "No data"}</p>
+    </div>
+  );
+}
