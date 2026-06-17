@@ -8,9 +8,9 @@ import type { ScreenshotFeed, PlayerScreenshot } from "@/lib/screenshots";
 import { formatZagrebTime } from "@/lib/time";
 
 const CACHE_KEY = "gizmocraft:last-screenshot-feed";
-const POLL_MS = 3_000;
-const INITIAL_VISIBLE_SCREENSHOTS = 6;
-const LOAD_MORE_SCREENSHOTS = 6;
+const POLL_MS = 5_000;
+const INITIAL_VISIBLE_SCREENSHOTS = 3;
+const LOAD_MORE_SCREENSHOTS = 3;
 
 function imageUrl(image: PlayerScreenshot) {
   return `/api/screenshots/${encodeURIComponent(image.id)}?v=${encodeURIComponent(image.modifiedAt)}`;
@@ -346,7 +346,7 @@ function ScreenshotLightbox({ shot, onClose }: { shot: PlayerScreenshot; onClose
             className="mx-auto max-h-[78vh] w-auto max-w-full rounded-2xl object-contain"
             sizes="100vw"
             priority
-            quality={88}
+            quality={80}
           />
         </div>
       </div>
@@ -381,7 +381,7 @@ function OptimizedScreenshot({
       width={width}
       height={height}
       sizes={sizes}
-      quality={quality ?? (priority ? 82 : 68)}
+      quality={quality ?? (priority ? 74 : 52)}
       placeholder="blur"
       blurDataURL={`data:image/svg+xml;charset=utf-8,${blurSvg}`}
       priority={priority}
