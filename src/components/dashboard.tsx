@@ -67,10 +67,10 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
-  async function refresh(showSkeleton = false) {
+  async function refresh(showSkeleton = false, syncBridge = false) {
     if (showSkeleton) setRefreshing(true);
     try {
-      const res = await fetch(`/api/dashboard?ts=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/dashboard?ts=${Date.now()}${syncBridge ? "&refresh=1" : ""}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Dashboard data failed: ${res.status}`);
       const nextData = await res.json();
       setData(nextData);
@@ -115,7 +115,7 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
 
   return (
     <div className="space-y-6">
-      <Hero worldStats={currentWorldStats} live={Boolean(data.live)} view={view} refreshing={refreshing} failed={failed} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} onRefresh={() => void refresh(true)} />
+      <Hero worldStats={currentWorldStats} live={Boolean(data.live)} view={view} refreshing={refreshing} failed={failed} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} onRefresh={() => void refresh(true, true)} />
       {view === "overview" ? <DashboardProfileSummary /> : null}
       {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data.live)} refreshing={refreshing} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} /> : null}
       {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data.live)} refreshing={refreshing} /> : null}

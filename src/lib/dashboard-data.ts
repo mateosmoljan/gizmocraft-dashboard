@@ -28,6 +28,9 @@ export function bridgeRequestInit(): RequestInit {
 }
 
 const BRIDGE_SYNC_TIMEOUT_MS = 30_000;
+const DASHBOARD_DATA_CACHE_MS = 15_000;
+let cachedDashboardData: { data: DashboardData; fetchedAt: number; bridgeUrl: string } | null = null;
+let inFlightDashboardData: Promise<DashboardData> | null = null;
 
 async function syncBridgeStats(bridgeUrl: string) {
   const res = await fetch(`${bridgeUrl}/api/sync`, {
@@ -58,11 +61,11 @@ function offlineData(error: unknown, allowSampleFallback: boolean): DashboardDat
   };
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
+async function readDashboardDataFromBridge({ sync = false }: { sync?: boolean } = {}): Promise<DashboardData> {
   const bridgeUrl = bridgeUrlFromEnv();
   const allowSampleFallback = !isProductionBridgeConfigured();
   try {
-    await syncBridgeStats(bridgeUrl);
+    if (sync) await syncBridgeStats(bridgeUrl);
     const res = await fetch(`${bridgeUrl}/api/leaderboards`, bridgeRequestInit());
     if (!res.ok) throw new Error(`bridge leaderboards ${res.status}`);
     const data = await res.json();
@@ -103,4 +106,21 @@ export async function getDashboardData(): Promise<DashboardData> {
   } catch (error) {
     return offlineData(error, allowSampleFallback);
   }
+}
+
+export async function getDashboardData({ sync = false }: { sync?: boolean } = {}): Promise<DashboardData> {
+  const now = Date.now();
+  const bridgeUrl = bridgeUrlFromEnv();
+  if (!sync && cachedDashboardData?.bridgeUrl === bridgeUrl && now - cachedDashboardData.fetchedAt < DASHBOARD_DATA_CACHE_MS) {
+    return cachedDashboardData.data;
+  }
+
+  const promise = sync
+    ? readDashboardDataFromBridge({ sync: true })
+    : (inFlightDashboardData ??= readDashboardDataFromBridge().finally(() => {
+      inFlightDashboardData = null;
+    }));
+  const data = await promise;
+  if (data.live) cachedDashboardData = { data, fetchedAt: Date.now(), bridgeUrl };
+  return data;
 }
