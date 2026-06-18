@@ -23,6 +23,10 @@ function imageDimensions(image: PlayerScreenshot) {
   };
 }
 
+function optimizedImageUrl(image: PlayerScreenshot, width: number, quality: number) {
+  return `/_next/image?url=${encodeURIComponent(imageUrl(image))}&w=${width}&q=${quality}`;
+}
+
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
@@ -316,8 +320,12 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
 
 function ScreenshotLightbox({ shot, onClose }: { shot: PlayerScreenshot; onClose: () => void }) {
   const frameRef = useRef<HTMLDivElement>(null);
-  const [optimizedLoaded, setOptimizedLoaded] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+  const [enhancedLoaded, setEnhancedLoaded] = useState(false);
   const [fullQualityLoaded, setFullQualityLoaded] = useState(false);
+  const { width, height } = imageDimensions(shot);
+  const aspectRatio = `${width} / ${height}`;
+  const previewSrc = optimizedImageUrl(shot, 640, 52);
 
   async function enterFullscreen() {
     const target = frameRef.current;
@@ -337,8 +345,8 @@ function ScreenshotLightbox({ shot, onClose }: { shot: PlayerScreenshot; onClose
       aria-label={`Screenshot preview ${shot.fileName}`}
       onClick={onClose}
     >
-      <div ref={frameRef} className="relative max-h-full w-full max-w-7xl overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/60 fullscreen:max-h-screen fullscreen:max-w-none fullscreen:rounded-none fullscreen:border-0" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 p-4">
+      <div ref={frameRef} className="relative flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/60 fullscreen:max-h-screen fullscreen:max-w-none fullscreen:rounded-none fullscreen:border-0" onClick={(event) => event.stopPropagation()}>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 p-4">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-200/80">Screenshot preview</p>
             <h2 className="mt-1 truncate text-xl font-black text-white">{shot.player ?? "Unknown player"}</h2>
@@ -346,7 +354,7 @@ function ScreenshotLightbox({ shot, onClose }: { shot: PlayerScreenshot; onClose
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="hidden rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-black text-emerald-100 sm:inline-flex">
-              {fullQualityLoaded ? "Full quality loaded" : optimizedLoaded ? "Loading full quality…" : "Fast preview"}
+              {fullQualityLoaded ? "Full quality loaded" : enhancedLoaded ? "Loading full quality…" : previewLoaded ? "Fast preview" : "Opening…"}
             </span>
             <button
               type="button"
@@ -366,26 +374,37 @@ function ScreenshotLightbox({ shot, onClose }: { shot: PlayerScreenshot; onClose
             </button>
           </div>
         </div>
-        <div className="max-h-[82vh] overflow-auto bg-black/40 p-3 fullscreen:max-h-[calc(100vh-80px)] md:p-5">
-          <div className="relative mx-auto max-w-full">
-            {optimizedLoaded ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-black/40 p-3 md:p-5">
+          <div
+            className="relative mx-auto w-full max-w-full overflow-hidden rounded-2xl bg-slate-900/80 shadow-2xl shadow-black/40 fullscreen:max-h-[calc(100vh-96px)]"
+            style={{ aspectRatio }}
+          >
+            <img
+              src={previewSrc}
+              alt=""
+              aria-hidden="true"
+              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-150 ${enhancedLoaded ? "opacity-0" : "opacity-100"}`}
+              onLoad={() => setPreviewLoaded(true)}
+            />
+            <Image
+              src={imageUrl(shot)}
+              alt={`Full size Minecraft screenshot ${shot.fileName}`}
+              fill
+              sizes="(min-width: 1280px) 1180px, 100vw"
+              quality={80}
+              priority
+              className={`object-contain transition-opacity duration-200 ${enhancedLoaded && !fullQualityLoaded ? "opacity-100" : "opacity-0"}`}
+              onLoad={() => setEnhancedLoaded(true)}
+            />
+            {enhancedLoaded ? (
               <img
                 src={imageUrl(shot)}
                 alt=""
                 aria-hidden="true"
-                className={`absolute inset-0 mx-auto max-h-[78vh] w-auto max-w-full rounded-2xl object-contain transition-opacity duration-300 fullscreen:max-h-[calc(100vh-120px)] ${fullQualityLoaded ? "opacity-100" : "opacity-0"}`}
+                className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ${fullQualityLoaded ? "opacity-100" : "opacity-0"}`}
                 onLoad={() => setFullQualityLoaded(true)}
               />
             ) : null}
-          <OptimizedScreenshot
-            shot={shot}
-            alt={`Full size Minecraft screenshot ${shot.fileName}`}
-            className={`mx-auto max-h-[78vh] w-auto max-w-full rounded-2xl object-contain transition-opacity duration-300 fullscreen:max-h-[calc(100vh-120px)] ${fullQualityLoaded ? "opacity-0" : "opacity-100"}`}
-            sizes="100vw"
-            priority
-            quality={80}
-            onLoad={() => setOptimizedLoaded(true)}
-          />
           </div>
         </div>
       </div>
