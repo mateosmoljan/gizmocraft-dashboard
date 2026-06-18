@@ -18,7 +18,7 @@ describe("GizmoCraft shell logo caching", () => {
   });
 
   it("serves brand and icon image assets cache-first from the service worker", () => {
-    assert.match(serviceWorkerSource, /gizmocraft-shell-v4/);
+    assert.match(serviceWorkerSource, /gizmocraft-shell-v5/);
     assert.match(serviceWorkerSource, /"\/brand\/gizmocraft-floating-world-logo\.png"/);
     assert.match(serviceWorkerSource, /CACHE_FIRST_PATH_PREFIXES = \["\/brand\/", "\/icons\/"\]/);
     assert.match(serviceWorkerSource, /if \(shouldUseCacheFirst\(url\)\)/);

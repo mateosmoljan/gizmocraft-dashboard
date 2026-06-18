@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Activity, BarChart3, Camera, Globe2, Settings, Trophy, UserRound, Users } from "lucide-react";
+import { Activity, BarChart3, Camera, Settings, Trophy, UserRound, Users } from "lucide-react";
 import { gizmoNavItems } from "@/lib/navigation";
 import { InstallAppButton } from "@/components/install-app-button";
 import { MinecraftScene } from "@/components/minecraft-scene";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 
-const icons = [BarChart3, Globe2, Camera, UserRound, Trophy, Activity, Users, Settings];
+const icons = [BarChart3, Camera, UserRound, Trophy, Activity, Users, Settings];
 type AppStats = { online: number; totalSignedIn: number; live: boolean };
 type AppStatsState = AppStats | null;
 const APP_STATS_TOTAL_CACHE_KEY = "gizmocraft:max-google-users-total";
