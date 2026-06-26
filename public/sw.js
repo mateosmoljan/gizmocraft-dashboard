@@ -1,7 +1,8 @@
-const CACHE_NAME = "gizmocraft-shell-v5";
+const CACHE_NAME = "gizmocraft-shell-v6";
 const SHELL_ROUTES = [
   "/",
   "/dashboard",
+  "/materials",
   "/signing",
   "/brand/gizmocraft-floating-world-logo.png",
   "/gizmocraft-logo-icon.png",
