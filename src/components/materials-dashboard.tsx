@@ -16,13 +16,13 @@ function itemIcon(item?: { icon?: string; name?: string }, className = "h-9 w-9"
 }
 
 function IsometricIcon({ item, size = "md", active = false, crafted = false }: { item?: { icon?: string; name?: string }; size?: "sm" | "md" | "lg"; active?: boolean; crafted?: boolean }) {
-  const box = size === "lg" ? "h-20 w-20" : size === "sm" ? "h-11 w-11" : "h-14 w-14";
-  const icon = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-8 w-8" : "h-10 w-10";
+  const box = size === "lg" ? "h-20 w-20" : size === "sm" ? "h-10 w-10" : "h-12 w-12";
+  const icon = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-7 w-7" : "h-9 w-9";
   return (
-    <span className={`relative grid ${box} shrink-0 place-items-center rounded-2xl border bg-gradient-to-br from-slate-600/70 via-slate-800 to-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_14px_24px_rgba(0,0,0,0.28)] transition duration-200 [transform:perspective(480px)_rotateX(52deg)_rotateZ(-38deg)] group-hover:[transform:perspective(480px)_rotateX(48deg)_rotateZ(-38deg)_translateY(-6px)] ${active ? "border-emerald-200 ring-2 ring-emerald-300/50" : "border-slate-500/70"}`}>
-      <span className="absolute inset-1 rounded-xl border border-white/10 bg-black/15" />
-      <span className="relative [transform:rotateZ(38deg)_rotateX(-52deg)]">{itemIcon(item, icon)}</span>
-      {crafted ? <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-300 text-slate-950 [transform:rotateZ(38deg)_rotateX(-52deg)]"><Check className="h-3 w-3" /></span> : null}
+    <span className={`relative grid ${box} shrink-0 place-items-center overflow-hidden rounded-xl border bg-gradient-to-br from-slate-700/80 via-slate-900 to-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_16px_rgba(0,0,0,0.28)] transition duration-150 group-hover:-translate-y-1 group-hover:scale-110 ${active ? "border-emerald-200 ring-2 ring-emerald-300/50" : "border-slate-500/70"}`}>
+      <span className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.14),transparent_38%,rgba(0,0,0,0.22)_70%)]" />
+      <span className="relative grid aspect-square place-items-center">{itemIcon(item, icon)}</span>
+      {crafted ? <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-300 text-slate-950"><Check className="h-3 w-3" /></span> : null}
     </span>
   );
 }
