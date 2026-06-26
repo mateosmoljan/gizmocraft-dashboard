@@ -1,18 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { Check, Hammer, Search, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Check, Cuboid, Hammer, Search, Sparkles } from "lucide-react";
 import { materialById, minecraftMaterials, recipesForMaterial, searchMaterials, usedInForMaterial, type MinecraftIngredient, type MinecraftMaterial, type MinecraftRecipe } from "@/lib/minecraft-materials";
 
 type Props = { signedIn: boolean; userName?: string | null };
 
 type CraftedResponse = { crafted: string[]; totalCraftable: number; authenticated: boolean };
 
-function itemIcon(item?: { icon?: string; name?: string }) {
+function itemIcon(item?: { icon?: string; name?: string }, className = "h-9 w-9") {
   if (item?.icon) {
-    return <img src={item.icon} alt="" className="h-9 w-9 object-contain [image-rendering:pixelated] drop-shadow" loading="lazy" />;
+    return <img src={item.icon} alt="" className={`${className} object-contain [image-rendering:pixelated] drop-shadow-[0_8px_10px_rgba(0,0,0,0.45)]`} loading="lazy" />;
   }
   return <span className="text-xs font-black text-slate-200">{(item?.name ?? "?").slice(0, 2).toUpperCase()}</span>;
+}
+
+function IsometricIcon({ item, size = "md", active = false, crafted = false }: { item?: { icon?: string; name?: string }; size?: "sm" | "md" | "lg"; active?: boolean; crafted?: boolean }) {
+  const box = size === "lg" ? "h-20 w-20" : size === "sm" ? "h-11 w-11" : "h-14 w-14";
+  const icon = size === "lg" ? "h-14 w-14" : size === "sm" ? "h-8 w-8" : "h-10 w-10";
+  return (
+    <span className={`relative grid ${box} shrink-0 place-items-center rounded-2xl border bg-gradient-to-br from-slate-600/70 via-slate-800 to-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_14px_24px_rgba(0,0,0,0.28)] transition duration-200 [transform:perspective(480px)_rotateX(52deg)_rotateZ(-38deg)] group-hover:[transform:perspective(480px)_rotateX(48deg)_rotateZ(-38deg)_translateY(-6px)] ${active ? "border-emerald-200 ring-2 ring-emerald-300/50" : "border-slate-500/70"}`}>
+      <span className="absolute inset-1 rounded-xl border border-white/10 bg-black/15" />
+      <span className="relative [transform:rotateZ(38deg)_rotateX(-52deg)]">{itemIcon(item, icon)}</span>
+      {crafted ? <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-300 text-slate-950 [transform:rotateZ(38deg)_rotateX(-52deg)]"><Check className="h-3 w-3" /></span> : null}
+    </span>
+  );
 }
 
 function IngredientPill({ ingredient }: { ingredient: MinecraftIngredient }) {
@@ -39,6 +51,47 @@ function RecipeGrid({ recipe }: { recipe: MinecraftRecipe }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function MiniRecipePreview({ item, recipe }: { item: MinecraftMaterial; recipe?: MinecraftRecipe }) {
+  if (!recipe) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-black/50">
+        <div className="flex items-center gap-3">
+          <IsometricIcon item={item} size="sm" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-white">{item.name}</p>
+            <p className="text-xs text-slate-400">No generated recipe</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const rows = recipe.pattern.length ? [...recipe.pattern] : [];
+  while (rows.length < 3) rows.push("");
+  const slots = rows.length ? rows.flatMap((row) => row.padEnd(3, " ").slice(0, 3).split("")) : [];
+  const ingredients = recipe.ingredients.length ? recipe.ingredients : Object.values(recipe.key);
+  return (
+    <div className="w-72 rounded-2xl border border-emerald-300/25 bg-slate-950/95 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="truncate text-sm font-black text-white">{item.name}</p>
+        <span className="shrink-0 rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-bold text-emerald-100">×{recipe.count}</span>
+      </div>
+      {slots.length ? (
+        <div className="grid w-max grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/35 p-1.5">
+          {slots.map((symbol, index) => {
+            const ingredient = symbol === " " ? null : recipe.key[symbol];
+            return <span key={`${recipe.id}-mini-${index}`} className={`grid h-8 w-8 place-items-center rounded-lg border bg-slate-800/90 ${ingredient ? "border-slate-500/70" : "border-slate-700/50 opacity-30"}`}>{ingredient ? itemIcon(ingredient, "h-6 w-6") : null}</span>;
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {ingredients.slice(0, 9).map((ingredient, index) => <span key={`${recipe.id}-mini-ing-${index}`} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-500/70 bg-slate-800/90" title={ingredient.name}>{itemIcon(ingredient, "h-6 w-6")}</span>)}
+        </div>
+      )}
+      <p className="mt-2 truncate text-[11px] text-slate-400">{recipe.station}</p>
     </div>
   );
 }
@@ -76,6 +129,7 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
   const [craftedIds, setCraftedIds] = useState<Set<string>>(new Set());
   const [craftedReady, setCraftedReady] = useState(!signedIn);
   const [pending, startTransition] = useTransition();
+  const detailRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -94,7 +148,7 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
     };
   }, [signedIn]);
 
-  const filtered = useMemo(() => searchMaterials({ query, station, category, type, crafted: craftedFilter, craftedIds }).slice(0, 160), [query, station, category, type, craftedFilter, craftedIds]);
+  const filtered = useMemo(() => searchMaterials({ query, station, category, type, crafted: craftedFilter, craftedIds }), [query, station, category, type, craftedFilter, craftedIds]);
   const selected = materialById.get(selectedId) ?? filtered[0] ?? minecraftMaterials.items[0];
   const selectedRecipes = selected ? recipesForMaterial(selected.id) : [];
   const usedIn = selected ? usedInForMaterial(selected.id).slice(0, 24) : [];
@@ -103,6 +157,11 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
   useEffect(() => {
     if (filtered.length && !filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);
   }, [filtered, selectedId]);
+
+  function selectMaterial(item: MinecraftMaterial) {
+    setSelectedId(item.id);
+    window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
 
   function toggleCrafted(item: MinecraftMaterial) {
     if (!signedIn || pending) return;
@@ -153,24 +212,24 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
       </section>
 
       <section className="rounded-[2rem] border border-white/10 bg-white/8 p-4 backdrop-blur">
-        <div className="grid gap-3 xl:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,2fr)_repeat(4,minmax(150px,1fr))]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-emerald-200" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Smart search: 'bright base light', 'diamond gear', 'red building block', planks…" className="h-full w-full rounded-2xl border border-white/10 bg-slate-950/80 py-3 pl-12 pr-4 text-sm text-white outline-none ring-emerald-300/40 focus:ring-2" />
           </label>
-          <select value={station} onChange={(event) => setStation(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white">
+          <select value={station} onChange={(event) => setStation(event.target.value)} className="w-full min-w-0 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white">
             <option value="">All stations</option>
             {minecraftMaterials.filters.stations.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
           </select>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white">
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className="w-full min-w-0 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white">
             <option value="">All categories</option>
             {minecraftMaterials.filters.categories.map((entry) => <option key={entry} value={entry}>{entry.replaceAll("_", " ")}</option>)}
           </select>
-          <select value={type} onChange={(event) => setType(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white">
+          <select value={type} onChange={(event) => setType(event.target.value)} className="w-full min-w-0 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white">
             <option value="">All recipe types</option>
             {minecraftMaterials.filters.types.map((entry) => <option key={entry} value={entry}>{entry.replaceAll("_", " ")}</option>)}
           </select>
-          <select value={craftedFilter} onChange={(event) => setCraftedFilter(event.target.value as "all" | "crafted" | "uncrafted")} className="rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white" disabled={!signedIn}>
+          <select value={craftedFilter} onChange={(event) => setCraftedFilter(event.target.value as "all" | "crafted" | "uncrafted")} className="w-full min-w-0 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-3 text-sm text-white" disabled={!signedIn}>
             <option value="all">All crafted states</option>
             <option value="crafted">Crafted</option>
             <option value="uncrafted">Not crafted</option>
@@ -184,78 +243,75 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
 
       {!signedIn ? <div className="rounded-3xl border border-amber-300/30 bg-amber-300/10 p-4 text-amber-50">Sign in with Google to save a private crafted checklist. Search and recipe browsing still work without tracking.</div> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_440px]">
-        <section>
-          <div className="mb-3 text-sm text-slate-300">Showing {filtered.length.toLocaleString()} results {filtered.length === 160 ? "(top matches)" : ""} from {minecraftMaterials.stats.items.toLocaleString()} craftable outputs.</div>
-          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-            {filtered.map((item) => {
-              const crafted = craftedIds.has(item.id);
-              const active = selected?.id === item.id;
-              return (
-                <article key={item.id} className={`rounded-3xl border bg-slate-950/55 p-4 transition hover:-translate-y-0.5 hover:border-emerald-300/40 ${active ? "border-emerald-300/50" : "border-white/10"}`}>
-                  <button onClick={() => setSelectedId(item.id)} className="flex w-full items-center gap-3 text-left">
-                    <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-slate-500/70 bg-slate-800">{itemIcon(item)}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-lg font-black text-white">{item.name}</span>
-                      <span className="block truncate text-xs text-slate-500">{item.id}</span>
-                      <span className="mt-1 block text-xs text-slate-400">{item.stations.slice(0, 2).join(" · ")}</span>
-                    </span>
-                  </button>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <button onClick={() => toggleCrafted(item)} disabled={!signedIn || pending} className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black transition ${crafted ? "bg-emerald-300 text-slate-950" : "border border-white/10 text-slate-300 hover:border-emerald-300/40 disabled:opacity-45"}`}>
-                      <Check className="h-4 w-4" /> {crafted ? "Crafted" : "Mark crafted"}
-                    </button>
-                    <span className="text-xs text-slate-500">used in {item.usedIn.length}</span>
-                  </div>
-                </article>
-              );
-            })}
+      <section className="rounded-[2rem] border border-white/10 bg-slate-950/45 p-4 backdrop-blur">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-black text-white"><Cuboid className="h-4 w-4 text-emerald-200" /> Icon atlas</p>
+            <p className="text-xs text-slate-400">Showing {filtered.length.toLocaleString()} of {minecraftMaterials.stats.items.toLocaleString()} materials. Hover an icon for the recipe grid; click an icon to jump to its detail.</p>
           </div>
-        </section>
+        </div>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-x-2 gap-y-5 md:grid-cols-[repeat(auto-fill,minmax(66px,1fr))]">
+          {filtered.map((item, index) => {
+            const crafted = craftedIds.has(item.id);
+            const active = selected?.id === item.id;
+            const firstRecipe = recipesForMaterial(item.id)[0];
+            return (
+              <button key={item.id} type="button" onClick={() => selectMaterial(item)} title={item.name} aria-label={`Select ${item.name}`} className="group relative isolate flex min-h-20 items-center justify-center rounded-2xl border border-transparent p-1 transition hover:z-30 hover:border-emerald-300/30 hover:bg-white/6 focus:outline-none focus:ring-2 focus:ring-emerald-300/60">
+                <IsometricIcon item={item} size="md" active={active} crafted={crafted} />
+                <span className="sr-only">{item.name}</span>
+                <span className={`pointer-events-none absolute left-1/2 z-40 hidden -translate-x-1/2 ${index < 12 ? "top-full mt-3" : "bottom-full mb-3"} group-hover:block group-focus:block`}>
+                  <MiniRecipePreview item={item} recipe={firstRecipe} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
-        <aside className="h-max rounded-[2rem] border border-white/10 bg-slate-950/75 p-5 backdrop-blur xl:sticky xl:top-6">
-          {selected ? (
-            <div className="space-y-5">
+      <section ref={detailRef} className="scroll-mt-6 rounded-[2rem] border border-white/10 bg-slate-950/75 p-5 backdrop-blur">
+        {selected ? (
+          <div className="space-y-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="flex items-start gap-4">
-                <span className="grid h-20 w-20 shrink-0 place-items-center rounded-3xl border border-slate-500/70 bg-slate-800">{itemIcon(selected)}</span>
+                <IsometricIcon item={selected} size="lg" crafted={craftedIds.has(selected.id)} active />
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/70">Selected material</p>
                   <h2 className="mt-1 text-3xl font-black">{selected.name}</h2>
                   <p className="break-all text-sm text-slate-500">{selected.id}</p>
-                  <button onClick={() => toggleCrafted(selected)} disabled={!signedIn || pending} className={`mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${craftedIds.has(selected.id) ? "bg-emerald-300 text-slate-950" : "border border-white/10 text-slate-200 disabled:opacity-45"}`}>
-                    <Check className="h-4 w-4" /> {craftedIds.has(selected.id) ? "Crafted" : signedIn ? "Mark as crafted" : "Sign in to track"}
-                  </button>
                 </div>
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                {[...selected.categories, ...selected.stations, ...selected.types].slice(0, 8).map((entry) => <span key={entry} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{entry.replaceAll("_", " ")}</span>)}
-              </div>
-
-              <section>
-                <div className="mb-3 flex items-center gap-2 text-lg font-black"><Hammer className="h-5 w-5 text-emerald-200" /> How to craft</div>
-                <div className="space-y-3">
-                  {selectedRecipes.map((recipe) => <RecipeDetail key={recipe.id} recipe={recipe} />)}
-                </div>
-              </section>
-
-              <section>
-                <h3 className="mb-3 text-lg font-black">Used in</h3>
-                {usedIn.length ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {usedIn.map((item) => (
-                      <button key={item.id} onClick={() => setSelectedId(item.id)} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 text-left text-xs text-slate-200 hover:border-emerald-300/40">
-                        <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-800">{itemIcon(item)}</span>
-                        <span className="truncate">{item.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : <p className="text-sm text-slate-500">No generated recipe uses this as an ingredient.</p>}
-              </section>
+              <button onClick={() => toggleCrafted(selected)} disabled={!signedIn || pending} className={`inline-flex w-max items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${craftedIds.has(selected.id) ? "bg-emerald-300 text-slate-950" : "border border-white/10 text-slate-200 disabled:opacity-45"}`}>
+                <Check className="h-4 w-4" /> {craftedIds.has(selected.id) ? "Crafted" : signedIn ? "Mark as crafted" : "Sign in to track"}
+              </button>
             </div>
-          ) : null}
-        </aside>
-      </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[...selected.categories, ...selected.stations, ...selected.types].slice(0, 8).map((entry) => <span key={entry} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{entry.replaceAll("_", " ")}</span>)}
+            </div>
+
+            <section>
+              <div className="mb-3 flex items-center gap-2 text-lg font-black"><Hammer className="h-5 w-5 text-emerald-200" /> How to craft</div>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {selectedRecipes.length ? selectedRecipes.map((recipe) => <RecipeDetail key={recipe.id} recipe={recipe} />) : <p className="text-sm text-slate-500">No generated recipe for this material.</p>}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="mb-3 text-lg font-black">Used in</h3>
+              {usedIn.length ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {usedIn.map((item) => (
+                    <button key={item.id} onClick={() => selectMaterial(item)} className="group flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 text-left text-xs text-slate-200 hover:border-emerald-300/40">
+                      <IsometricIcon item={item} size="sm" />
+                      <span className="truncate">{item.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : <p className="text-sm text-slate-500">No generated recipe uses this as an ingredient.</p>}
+            </section>
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

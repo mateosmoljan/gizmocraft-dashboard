@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { materialById, minecraftMaterials, recipesForMaterial, searchMaterials, usedInForMaterial } from "../src/lib/minecraft-materials";
 
@@ -18,5 +19,13 @@ describe("minecraft materials data", () => {
     assert.ok(searchMaterials({ query: "bright base light" }).some((item) => ["torch", "lantern", "soul_lantern"].includes(item.id)));
     assert.ok(searchMaterials({ query: "crft tbl" }).some((item) => item.id === "crafting_table"));
     assert.ok(searchMaterials({ station: "Stonecutter" }).every((item) => item.stations.includes("Stonecutter")));
+  });
+
+  it("renders the page as an icon-first atlas with hover recipe previews and click-to-detail scrolling", () => {
+    const source = readFileSync("src/components/materials-dashboard.tsx", "utf8");
+    assert.match(source, /Icon atlas/);
+    assert.match(source, /MiniRecipePreview/);
+    assert.match(source, /scrollIntoView/);
+    assert.match(source, /aria-label=\{`Select \$\{item\.name\}`\}/);
   });
 });
