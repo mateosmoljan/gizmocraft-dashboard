@@ -1,6 +1,7 @@
 import materialsData from "@/data/minecraft-materials.json";
 
-export type MinecraftIngredient = { name: string; id: string; icon: string };
+export type MaterialSource = { category: string; summary: string; territories: string[]; places: string[]; details: string[] };
+export type MinecraftIngredient = { name: string; id: string; icon: string; source?: MaterialSource };
 export type MinecraftRecipe = {
   id: string;
   type: string;
@@ -28,6 +29,8 @@ export type MinecraftMaterial = {
   aliases: string[];
   recipeIds: string[];
   usedIn: string[];
+  craftable: boolean;
+  source: MaterialSource;
   search: string;
 };
 export type MinecraftMaterialsData = {
@@ -66,13 +69,7 @@ function consonantSkeleton(value: string) {
 function fuzzyIncludes(haystack: string, token: string) {
   if (haystack.includes(token)) return true;
   if (token.length >= 3 && consonantSkeleton(haystack).includes(consonantSkeleton(token))) return true;
-  let index = 0;
-  for (const char of token) {
-    index = haystack.indexOf(char, index);
-    if (index === -1) return false;
-    index += 1;
-  }
-  return token.length >= 4;
+  return false;
 }
 
 export function materialSearchScore(item: MinecraftMaterial, query: string) {

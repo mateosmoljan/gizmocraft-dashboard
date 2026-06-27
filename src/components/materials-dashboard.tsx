@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Check, Cuboid, Hammer, Search, Sparkles } from "lucide-react";
-import { materialById, minecraftMaterials, recipesForMaterial, searchMaterials, usedInForMaterial, type MinecraftIngredient, type MinecraftMaterial, type MinecraftRecipe } from "@/lib/minecraft-materials";
+import { materialById, minecraftMaterials, recipesForMaterial, searchMaterials, usedInForMaterial, type MaterialSource, type MinecraftIngredient, type MinecraftMaterial, type MinecraftRecipe } from "@/lib/minecraft-materials";
 
 type Props = { signedIn: boolean; userName?: string | null };
 
@@ -27,16 +27,50 @@ function IsometricIcon({ item, size = "md", active = false, crafted = false }: {
   );
 }
 
-function IngredientPill({ ingredient }: { ingredient: MinecraftIngredient }) {
+function SourcePopover({ name, source, compact = false }: { name: string; source?: MaterialSource; compact?: boolean }) {
+  const data = source ?? { category: "material", summary: "Trace this material through recipes, mob drops, loot, mining, or biome gathering.", territories: ["Overworld"], places: ["biomes", "caves", "structures", "crafting chains"], details: [] };
   return (
-    <span className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-200">
-      <span className="grid h-7 w-7 place-items-center rounded-lg border border-slate-500/50 bg-slate-800">{itemIcon(ingredient)}</span>
+    <div className={`${compact ? "w-64" : "w-full"} rounded-2xl border border-emerald-300/20 bg-slate-950/95 p-3 text-left shadow-2xl shadow-black/50`}>
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">Where to find</p>
+      <p className="mt-1 text-sm font-black text-white">{name}</p>
+      <p className="mt-1 text-xs leading-relaxed text-slate-300">{data.summary}</p>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {data.territories.map((entry) => <span key={entry} className="rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-bold text-emerald-100">{entry}</span>)}
+      </div>
+      <p className="mt-2 text-[11px] text-slate-400">Places: {data.places.join(" · ")}</p>
+      {!compact && data.details.length ? <p className="mt-2 text-xs text-slate-400">{data.details[0]}</p> : null}
+    </div>
+  );
+}
+
+function IngredientButton({ ingredient, onSelect, small = false }: { ingredient: MinecraftIngredient; onSelect?: (item: MinecraftMaterial) => void; small?: boolean }) {
+  const material = materialById.get(ingredient.id);
+  const canSelect = Boolean(material && onSelect);
+  const content = (
+    <>
+      <span className={`grid ${small ? "h-8 w-8 rounded-lg" : "h-12 w-12 rounded-xl"} place-items-center border border-slate-500/70 bg-slate-800/90`}>{itemIcon(ingredient, small ? "h-6 w-6" : "h-9 w-9")}</span>
+      <span className="sr-only">{ingredient.name}</span>
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden -translate-x-1/2 group-hover:block group-focus:block">
+        <SourcePopover name={ingredient.name} source={ingredient.source ?? material?.source} compact />
+      </span>
+    </>
+  );
+  if (canSelect && material) {
+    return <button type="button" onClick={() => onSelect?.(material)} title={`Find ${ingredient.name}`} className="group relative rounded-lg outline-none ring-emerald-300/40 hover:ring-2 focus:ring-2">{content}</button>;
+  }
+  return <span title={ingredient.name} className="group relative inline-grid">{content}</span>;
+}
+
+function IngredientPill({ ingredient, onSelect }: { ingredient: MinecraftIngredient; onSelect?: (item: MinecraftMaterial) => void }) {
+  return (
+    <span className="group relative inline-flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-200">
+      <IngredientButton ingredient={ingredient} onSelect={onSelect} small />
       <span>{ingredient.name}</span>
     </span>
   );
 }
 
-function RecipeGrid({ recipe }: { recipe: MinecraftRecipe }) {
+function RecipeGrid({ recipe, onSelect }: { recipe: MinecraftRecipe; onSelect?: (item: MinecraftMaterial) => void }) {
   if (!recipe.pattern.length) return null;
   const rows = [...recipe.pattern];
   while (rows.length < 3) rows.push("");
@@ -47,7 +81,7 @@ function RecipeGrid({ recipe }: { recipe: MinecraftRecipe }) {
         const ingredient = symbol === " " ? null : recipe.key[symbol];
         return (
           <div key={`${recipe.id}-${index}`} title={ingredient?.name} className={`grid h-12 w-12 place-items-center rounded-xl border bg-slate-800/80 ${ingredient ? "border-slate-500" : "border-slate-700/50 opacity-35"}`}>
-            {ingredient ? itemIcon(ingredient) : null}
+            {ingredient ? <IngredientButton ingredient={ingredient} onSelect={onSelect} /> : null}
           </div>
         );
       })}
@@ -96,7 +130,7 @@ function MiniRecipePreview({ item, recipe }: { item: MinecraftMaterial; recipe?:
   );
 }
 
-function RecipeDetail({ recipe }: { recipe: MinecraftRecipe }) {
+function RecipeDetail({ recipe, onSelect }: { recipe: MinecraftRecipe; onSelect?: (item: MinecraftMaterial) => void }) {
   const keyIngredients = Object.values(recipe.key);
   return (
     <article className="rounded-3xl border border-white/10 bg-slate-950/55 p-4">
@@ -109,9 +143,9 @@ function RecipeDetail({ recipe }: { recipe: MinecraftRecipe }) {
         <span>makes ×{recipe.count}</span>
       </div>
       <div className="mt-4 flex flex-col gap-4 md:flex-row">
-        <RecipeGrid recipe={recipe} />
+        <RecipeGrid recipe={recipe} onSelect={onSelect} />
         <div className="flex flex-1 flex-wrap content-start gap-2">
-          {(recipe.ingredients.length ? recipe.ingredients : keyIngredients).map((ingredient, index) => <IngredientPill key={`${recipe.id}-${ingredient.id}-${index}`} ingredient={ingredient} />)}
+          {(recipe.ingredients.length ? recipe.ingredients : keyIngredients).map((ingredient, index) => <IngredientPill key={`${recipe.id}-${ingredient.id}-${index}`} ingredient={ingredient} onSelect={onSelect} />)}
           {Object.keys(recipe.extra).length ? <pre className="w-full overflow-auto rounded-2xl bg-black/30 p-3 text-xs text-slate-300">{JSON.stringify(recipe.extra, null, 2)}</pre> : null}
         </div>
       </div>
@@ -202,7 +236,7 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
             </div>
             <div>
               <p className="text-3xl font-black text-emerald-200">{minecraftMaterials.stats.items}</p>
-              <p className="text-xs text-slate-400">craftable outputs</p>
+              <p className="text-xs text-slate-400">materials indexed</p>
             </div>
             <div className="col-span-2 h-2 overflow-hidden rounded-full bg-slate-800">
               <div className="h-full rounded-full bg-emerald-300 transition-all" style={{ width: `${Math.min(100, (craftedCount / minecraftMaterials.stats.items) * 100)}%` }} />
@@ -246,8 +280,8 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
       <section className="rounded-[2rem] border border-white/10 bg-slate-950/45 p-4 backdrop-blur">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-sm font-black text-white"><Cuboid className="h-4 w-4 text-emerald-200" /> Icon atlas</p>
-            <p className="text-xs text-slate-400">Showing {filtered.length.toLocaleString()} of {minecraftMaterials.stats.items.toLocaleString()} materials. Hover an icon for the recipe grid; click an icon to jump to its detail.</p>
+            <p className="flex items-center gap-2 text-sm font-black text-white"><Cuboid className="h-4 w-4 text-emerald-200" /> Material atlas</p>
+            <p className="text-xs text-slate-400">Showing {filtered.length.toLocaleString()} of {minecraftMaterials.stats.items.toLocaleString()} materials, roots, ingots, supplies, drops, and craftable outputs. Hover recipe ingredients for where to find them; click one to open its detail.</p>
           </div>
         </div>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-x-2 gap-y-5 md:grid-cols-[repeat(auto-fill,minmax(66px,1fr))]">
@@ -287,12 +321,15 @@ export function MaterialsDashboard({ signedIn, userName }: Props) {
 
             <div className="flex flex-wrap gap-2">
               {[...selected.categories, ...selected.stations, ...selected.types].slice(0, 8).map((entry) => <span key={entry} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{entry.replaceAll("_", " ")}</span>)}
+              {!selected.craftable ? <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-bold text-amber-100">root material</span> : null}
             </div>
+
+            <SourcePopover name={selected.name} source={selected.source} />
 
             <section>
               <div className="mb-3 flex items-center gap-2 text-lg font-black"><Hammer className="h-5 w-5 text-emerald-200" /> How to craft</div>
               <div className="grid gap-3 xl:grid-cols-2">
-                {selectedRecipes.length ? selectedRecipes.map((recipe) => <RecipeDetail key={recipe.id} recipe={recipe} />) : <p className="text-sm text-slate-500">No generated recipe for this material.</p>}
+                {selectedRecipes.length ? selectedRecipes.map((recipe) => <RecipeDetail key={recipe.id} recipe={recipe} onSelect={selectMaterial} />) : <p className="rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-50">This is a root material, not crafted. Use the “Where to find” card above for how to get it and where it appears.</p>}
               </div>
             </section>
 

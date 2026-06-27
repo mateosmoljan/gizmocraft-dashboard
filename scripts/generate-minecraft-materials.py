@@ -263,6 +263,86 @@ def aliases_for(item_id: str, name: str, category: str):
         terms.update(["light", "lighting", "bright"])
     return sorted(terms)
 
+
+def source_category(item_id):
+    i = clean_id(item_id).replace("#", "")
+    if any(k in i for k in ("ore", "raw_", "ingot", "diamond", "emerald", "coal", "lapis", "redstone", "quartz", "amethyst", "copper", "iron", "gold", "netherite")):
+        return "mineable resource"
+    if any(k in i for k in ("log", "wood", "planks", "sapling", "leaves", "stem", "hyphae", "bamboo")):
+        return "wood and plants"
+    if any(k in i for k in ("beef", "pork", "chicken", "mutton", "rabbit", "cod", "salmon", "tropical_fish", "pufferfish", "egg", "milk", "honey", "wheat", "carrot", "potato", "beetroot", "melon", "pumpkin", "cocoa", "sugar_cane", "kelp")):
+        return "food and farming"
+    if any(k in i for k in ("bone", "string", "spider_eye", "gunpowder", "ender_pearl", "blaze", "ghast", "slime", "magma_cream", "leather", "feather", "wool", "rotten_flesh", "phantom", "shulker", "prismarine", "nautilus")):
+        return "mob drop"
+    if any(k in i for k in ("sand", "gravel", "clay", "dirt", "mud", "stone", "granite", "diorite", "andesite", "deepslate", "tuff", "calcite", "terracotta", "ice", "snow")):
+        return "natural block"
+    if any(k in i for k in ("template", "disc", "sherd", "banner_pattern", "elytra", "heart_of_the_sea", "saddle", "name_tag")):
+        return "loot and treasure"
+    return "gatherable item"
+
+def survival_available(item_id):
+    i = clean_id(item_id).replace("#", "")
+    creative_only = {
+        "barrier", "bedrock", "light", "debug_stick", "command_block", "chain_command_block", "repeating_command_block",
+        "command_block_minecart", "structure_block", "structure_void", "jigsaw", "knowledge_book", "farmland",
+        "test_block", "test_instance_block"
+    }
+    if i in creative_only or i.startswith("test_") or i.endswith("_spawn_egg"):
+        return False
+    return True
+
+def source_info(item_id, name=None):
+    i = clean_id(item_id).replace("#", "")
+    title = name or title_from_id(i)
+    category = source_category(i)
+    territories = ["Overworld"]
+    places = []
+    summary = "Get it through normal survival play: gather, mine, craft, trade, loot, or collect it from mobs depending on the item."
+    details = []
+    if "netherite" in i or i in {"ancient_debris", "nether_quartz", "quartz", "blaze_rod", "ghast_tear", "magma_cream"} or i.startswith(("nether_", "crimson_", "warped_", "basalt", "blackstone")):
+        territories = ["Nether"]
+        places = ["Nether wastes", "basalt deltas", "crimson/warped forests", "Nether fortresses", "bastions"]
+        summary = "Find it in the Nether. Bring fire protection, blocks, food, and a safe route home."
+    elif i in {"ender_pearl", "end_stone", "chorus_fruit", "chorus_flower", "shulker_shell", "elytra", "dragon_breath"} or i.startswith(("end_", "purpur", "chorus")):
+        territories = ["The End"]
+        places = ["End islands", "End cities", "End ships"]
+        summary = "Find it in the End after reaching the stronghold portal. Outer islands and End cities hold the rare supplies."
+    elif any(k in i for k in ("prismarine", "sponge", "heart_of_the_sea", "nautilus", "kelp", "coral", "sea_pickle", "cod", "salmon", "tropical_fish", "pufferfish")):
+        territories = ["Overworld", "Ocean"]
+        places = ["oceans", "warm oceans", "ocean monuments", "shipwrecks", "buried treasure"]
+        summary = "Look around ocean biomes, fishing, underwater mobs, shipwrecks, monuments, or buried treasure."
+    elif any(k in i for k in ("diamond", "redstone", "lapis", "emerald", "iron", "gold", "copper", "coal", "ore", "raw_")):
+        places = ["caves", "branch mines", "mountains", "deepslate layers", "ore veins"]
+        summary = "Mine it underground in the Overworld. Ore depth and biome matter; bring the right pickaxe tier."
+        if "emerald" in i: details.append("Emerald ore is most common around mountain biomes; villagers are often the easier emerald source.")
+        if "diamond" in i: details.append("Diamonds are deep underground, commonly hunted near deepslate levels.")
+    elif any(k in i for k in ("log", "wood", "planks", "sapling", "leaves")):
+        places = ["forests", "jungles", "swamps", "taiga", "cherry groves", "mangrove swamps", "villages"]
+        summary = "Harvest the matching tree in its biome, then craft logs into planks or related wooden supplies."
+    elif any(k in i for k in ("sand", "cactus", "dead_bush", "terracotta")):
+        places = ["deserts", "badlands", "beaches", "rivers"]
+        summary = "Gather it from dry biomes, beaches, or river edges. Badlands are best for terracotta."
+    elif any(k in i for k in ("clay", "mud", "mangrove", "lily_pad", "slime")):
+        places = ["swamps", "mangrove swamps", "rivers", "lush caves", "slime chunks"]
+        summary = "Search wet biomes and cave water areas. Slimes spawn in swamps and slime chunks."
+    elif category == "mob drop":
+        places = ["mob spawns", "spawners", "night surface", "dimension-specific mob areas"]
+        summary = "Collect it by defeating or farming the matching mob."
+    elif category == "food and farming":
+        places = ["villages", "farms", "plains", "forests", "rivers/oceans", "animal pens"]
+        summary = "Farm it, harvest crops, breed animals, fish, or loot village farms depending on the item."
+    elif category == "loot and treasure":
+        places = ["dungeons", "mineshafts", "villages", "shipwrecks", "desert temples", "bastions", "ancient cities", "End cities"]
+        summary = "Mostly found as structure loot or rare treasure. Explore generated structures and chests."
+    elif any(k in i for k in ("stone", "granite", "diorite", "andesite", "deepslate", "tuff", "calcite")):
+        places = ["caves", "mountains", "underground", "geodes"]
+        summary = "Mine it from natural stone layers and cave formations."
+    if not places:
+        places = ["Overworld biomes", "villages", "caves", "structures", "mob drops", "crafting chains"]
+    if not details:
+        details.append(f"{title} is a {category}. Trace its recipes and used-in list to see the survival chain.")
+    return {"category": category, "summary": summary, "territories": territories, "places": places, "details": details}
+
 def result_info(data):
     r = data.get("result") or data.get("results") or data.get("output") or {}
     if isinstance(r, str):
@@ -289,7 +369,9 @@ def station_for(rtype):
     }.get(t, t.replace("_", " ").title())
 
 def ing(value):
-    return {"name": pretty_ref(value), "id": item_key(value), "icon": icon_for(value)}
+    item_id = item_key(value)
+    name = pretty_ref(value)
+    return {"name": name, "id": item_id, "icon": icon_for(value), "source": source_info(item_id, name)}
 
 def parse_recipe(path):
     data = json.loads(path.read_text())
@@ -373,15 +455,48 @@ def main():
             "aliases": rec["aliases"],
             "recipeIds": [],
             "usedIn": [],
+            "craftable": True,
+            "source": source_info(rec["resultId"], rec["resultName"]),
             "search": "",
         })
         item["recipeIds"].append(rec["id"])
         item["categories"] = sorted(set(item["categories"]) | {rec["category"]})
         item["stations"] = sorted(set(item["stations"]) | {rec["station"]})
         item["types"] = sorted(set(item["types"]) | {rec["type"]})
+    all_item_ids = set(items_by_id)
+    for path in ITEM_DEF_ROOT.glob("*.json"):
+        all_item_ids.add(path.stem)
+    for key in lang:
+        if key.startswith("item.minecraft."):
+            all_item_ids.add(key.rsplit(".", 1)[-1])
+    for item_id in sorted(all_item_ids):
+        if item_id in items_by_id or not survival_available(item_id):
+            continue
+        icon = icon_for(item_id)
+        if not icon:
+            continue
+        name = title_from_id(item_id)
+        src = source_info(item_id, name)
+        aliases = aliases_for(item_id, name, src["category"])
+        items_by_id[item_id] = {
+            "id": item_id,
+            "name": name,
+            "icon": icon,
+            "categories": [src["category"], "root material"],
+            "stations": ["Gather / Loot / Mine"],
+            "types": ["gathered"],
+            "aliases": aliases,
+            "recipeIds": [],
+            "usedIn": [],
+            "craftable": False,
+            "source": src,
+            "search": "",
+        }
+
     for item in items_by_id.values():
         item["usedIn"] = sorted(set(used_in.get(item["id"], [])))[:100]
-        item["search"] = " ".join([item["id"], item["name"], *item["categories"], *item["stations"], *item["types"], *item["aliases"], *item["usedIn"]]).lower()
+        src = item.get("source", {})
+        item["search"] = " ".join([item["id"], item["name"], *item["categories"], *item["stations"], *item["types"], *item["aliases"], *item["usedIn"], src.get("summary", ""), " ".join(src.get("territories", [])), " ".join(src.get("places", []))]).lower()
     out = {
         "version": "26.2",
         "source": "Official Minecraft client data pack recipe/model/tag extraction",
@@ -392,9 +507,9 @@ def main():
             "icons": len(list(ICON_DIR.glob("*.png"))),
         },
         "filters": {
-            "types": sorted(Counter(r["type"] for r in recipes)),
-            "stations": sorted(Counter(r["station"] for r in recipes)),
-            "categories": sorted(Counter(r["category"] for r in recipes)),
+            "types": sorted(set(Counter(r["type"] for r in recipes)) | {t for item in items_by_id.values() for t in item["types"]}),
+            "stations": sorted(set(Counter(r["station"] for r in recipes)) | {s for item in items_by_id.values() for s in item["stations"]}),
+            "categories": sorted(set(Counter(r["category"] for r in recipes)) | {c for item in items_by_id.values() for c in item["categories"]}),
         },
         "items": sorted(items_by_id.values(), key=lambda i: i["name"]),
         "recipes": recipes,
