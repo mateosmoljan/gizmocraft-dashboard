@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { boards as fallbackBoards, players as fallbackPlayers, worldStats as fallbackWorldStats } from "@/lib/sample-data";
 import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
@@ -66,8 +66,11 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   const [refreshing, setRefreshing] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const refreshInFlight = useRef(false);
 
   async function refresh(showSkeleton = false, syncBridge = false) {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     if (showSkeleton) setRefreshing(true);
     try {
       const res = await fetch(`/api/dashboard?ts=${Date.now()}${syncBridge ? "&refresh=1" : ""}`, { cache: "no-store" });
@@ -82,6 +85,7 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
     } catch {
       setFailed(true);
     } finally {
+      refreshInFlight.current = false;
       setRefreshing(false);
     }
   }
@@ -90,16 +94,16 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
     const cached = readClientCache<DashboardData>(DASHBOARD_CACHE_KEY);
     if (cached) setData(cached);
 
-    async function refreshVisibleDashboard() {
+    async function refreshVisibleDashboard(syncBridge = true) {
       if (document.visibilityState !== "visible") return;
-      await refresh(false);
+      await refresh(false, syncBridge);
     }
 
-    void refreshVisibleDashboard();
-    const interval = window.setInterval(() => void refreshVisibleDashboard(), LIVE_REFRESH_MS);
+    void refreshVisibleDashboard(true);
+    const interval = window.setInterval(() => void refreshVisibleDashboard(true), LIVE_REFRESH_MS);
     const clock = window.setInterval(() => setNow(Date.now()), 5_000);
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void refreshVisibleDashboard();
+      if (document.visibilityState === "visible") void refreshVisibleDashboard(true);
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
