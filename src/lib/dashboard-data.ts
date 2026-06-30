@@ -69,25 +69,46 @@ async function readDashboardDataFromBridge({ sync = false }: { sync?: boolean } 
     const res = await fetch(`${bridgeUrl}/api/leaderboards`, bridgeRequestInit());
     if (!res.ok) throw new Error(`bridge leaderboards ${res.status}`);
     const data = await res.json();
-    const players = (data.players ?? []).map((p: any, index: number) => ({
-      uuid: p.uuid,
-      name: p.name,
-      avatar: index === 0 ? "🐓" : index === 1 ? "⚡" : "🧱",
-      score: Math.round((p.diamonds ?? 0) * 100 + (p.mobsKilled ?? 0) * 10 + (p.blocksMined ?? 0) / 5 - (p.deaths ?? 0) * 75),
-      deaths: p.deaths ?? 0,
-      distanceKm: p.distanceKm ?? 0,
-      playHours: p.playHours ?? 0,
-      mobsKilled: p.mobsKilled ?? 0,
-      blocksMined: p.blocksMined ?? 0,
-      diamonds: p.diamonds ?? 0,
-      foodEaten: p.foodEaten ?? 0,
-      blocksPlaced: p.blocksPlaced ?? 0,
-      itemsCrafted: p.itemsCrafted ?? 0,
-      damageDealt: p.damageDealt ?? 0,
-      damageTaken: p.damageTaken ?? 0,
-      lastSeen: p.lastSeen ? formatZagrebDateTime(p.lastSeen) : "tracked",
-      online: Boolean(p.online),
-    }));
+    const perHour = (value: number, hours: number) => hours > 0 ? Number((value / hours).toFixed(2)) : 0;
+    const players = (data.players ?? []).map((p: any, index: number) => {
+      const playHours = p.playHours ?? 0;
+      const deaths = p.deaths ?? 0;
+      const mobsKilled = p.mobsKilled ?? 0;
+      const blocksMined = p.blocksMined ?? 0;
+      const diamonds = p.diamonds ?? 0;
+      const foodEaten = p.foodEaten ?? 0;
+      const blocksPlaced = p.blocksPlaced ?? 0;
+      const itemsCrafted = p.itemsCrafted ?? 0;
+      const damageDealt = p.damageDealt ?? 0;
+      const damageTaken = p.damageTaken ?? 0;
+      return {
+        uuid: p.uuid,
+        name: p.name,
+        avatar: index === 0 ? "🐓" : index === 1 ? "⚡" : "🧱",
+        score: Math.round(diamonds * 100 + mobsKilled * 10 + blocksMined / 5 - deaths * 75),
+        deaths,
+        distanceKm: p.distanceKm ?? 0,
+        playHours,
+        mobsKilled,
+        blocksMined,
+        diamonds,
+        foodEaten,
+        blocksPlaced,
+        itemsCrafted,
+        damageDealt,
+        damageTaken,
+        diamondsPerHour: perHour(diamonds, playHours),
+        blocksMinedPerHour: perHour(blocksMined, playHours),
+        blocksPlacedPerHour: perHour(blocksPlaced, playHours),
+        itemsCraftedPerHour: perHour(itemsCrafted, playHours),
+        mobsKilledPerHour: perHour(mobsKilled, playHours),
+        damageDealtPerHour: perHour(damageDealt, playHours),
+        deathsPerHour: perHour(deaths, playHours),
+        foodEatenPerHour: perHour(foodEaten, playHours),
+        lastSeen: p.lastSeen ? formatZagrebDateTime(p.lastSeen) : "tracked",
+        online: Boolean(p.online),
+      };
+    });
     if (!players.length && isProductionBridgeConfigured()) throw new Error("bridge returned no players");
     return {
       players: players.length ? players : fallbackPlayers,

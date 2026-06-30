@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { boards } from "../src/lib/sample-data";
 
-test("leaderboard boards include more scannable statistics", () => {
+test("leaderboard boards include unique statistics with derived efficiency data", () => {
   assert.equal(boards.length, 20);
   assert.deepEqual(boards.map((board) => board.title), [
     "Overall MVP",
@@ -14,24 +14,30 @@ test("leaderboard boards include more scannable statistics", () => {
     "Mob Menace",
     "Heavy Hitter",
     "Pain Sponge",
-    "Untouchable",
     "Death Tax",
-    "Respawn Regular",
     "Wanderer",
-    "Homebody",
     "Addict Board",
-    "Casual Visitor",
     "Food Vacuum",
-    "Snack Minimalist",
-    "Ore Accountant",
-    "Pacifist Watch",
-    "Score Underdog",
+    "Diamond Pace",
+    "Strip-Mine Speed",
+    "Build Pace",
+    "Crafting Pace",
+    "Mob Pace",
+    "Damage Pace",
+    "Safety Rating",
+    "Snack Tempo",
   ]);
+
+  const fields = boards.map((board) => board.field);
+  assert.equal(new Set(fields).size, fields.length, "every board should rank a unique data field");
   assert.ok(boards.some((board) => board.field === "score"));
   assert.ok(boards.some((board) => board.field === "damageDealt"));
   assert.ok(boards.some((board) => board.field === "blocksPlaced"));
-  assert.equal(boards.filter((board) => "ascending" in board && board.ascending).length, 7);
-  assert.ok(new Set(boards.map((board) => board.category)).size >= 5);
+  assert.ok(boards.some((board) => board.field === "diamondsPerHour"));
+  assert.ok(boards.some((board) => board.field === "blocksMinedPerHour"));
+  assert.ok(boards.some((board) => board.field === "deathsPerHour" && "ascending" in board && board.ascending));
+  assert.ok(new Set(boards.map((board) => board.category)).has("Efficiency"));
+  assert.ok(new Set(boards.map((board) => board.category)).size >= 6);
 });
 
 test("leaderboard UI uses featured cards, category chips, top-three rows, and no manual refresh", () => {
@@ -49,4 +55,22 @@ test("leaderboard UI uses featured cards, category chips, top-three rows, and no
   assert.doesNotMatch(source, /label="Sort"/);
   assert.doesNotMatch(source, /Low wins|High wins/);
   assert.doesNotMatch(source, /Refresh data|Refresh now|Showing last loaded/);
+});
+
+test("bridge dashboard data derives per-hour leaderboard fields", () => {
+  const source = readFileSync("src/lib/dashboard-data.ts", "utf8");
+
+  assert.match(source, /const perHour = \(value: number, hours: number\)/);
+  for (const field of [
+    "diamondsPerHour",
+    "blocksMinedPerHour",
+    "blocksPlacedPerHour",
+    "itemsCraftedPerHour",
+    "mobsKilledPerHour",
+    "damageDealtPerHour",
+    "deathsPerHour",
+    "foodEatenPerHour",
+  ]) {
+    assert.match(source, new RegExp(`${field}: perHour`));
+  }
 });

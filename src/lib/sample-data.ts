@@ -14,6 +14,14 @@ export type SamplePlayer = {
   foodEaten: number;
   damageDealt: number;
   damageTaken: number;
+  diamondsPerHour: number;
+  blocksMinedPerHour: number;
+  blocksPlacedPerHour: number;
+  itemsCraftedPerHour: number;
+  mobsKilledPerHour: number;
+  damageDealtPerHour: number;
+  deathsPerHour: number;
+  foodEatenPerHour: number;
   lastSeen: string;
   online?: boolean;
 };
@@ -41,16 +49,16 @@ export const boards = [
   { title: "Mob Menace", metric: "Mobs killed", field: "mobsKilled", suffix: "kills", category: "Combat", tone: "rose", roast: "public enemy of mobs" },
   { title: "Heavy Hitter", metric: "Damage dealt", field: "damageDealt", suffix: "damage", category: "Combat", tone: "rose", roast: "hands rated E for everyone" },
   { title: "Pain Sponge", metric: "Damage taken", field: "damageTaken", suffix: "damage", category: "Survival", tone: "amber", roast: "armor crying for help" },
-  { title: "Untouchable", metric: "Damage taken", field: "damageTaken", suffix: "damage", category: "Survival", tone: "emerald", roast: "dodging problems for once", ascending: true },
   { title: "Death Tax", metric: "Deaths", field: "deaths", suffix: "deaths", category: "Survival", tone: "amber", roast: "somehow still alive", ascending: true },
-  { title: "Respawn Regular", metric: "Deaths", field: "deaths", suffix: "deaths", category: "Survival", tone: "rose", roast: "bed spawn working overtime" },
   { title: "Wanderer", metric: "Distance", field: "distanceKm", suffix: "km", category: "Activity", tone: "sky", roast: "allergic to staying home" },
-  { title: "Homebody", metric: "Distance", field: "distanceKm", suffix: "km", category: "Activity", tone: "amber", roast: "front porch specialist", ascending: true },
   { title: "Addict Board", metric: "Playtime", field: "playHours", suffix: "played", category: "Activity", tone: "sky", roast: "grass untouched" },
-  { title: "Casual Visitor", metric: "Playtime", field: "playHours", suffix: "played", category: "Activity", tone: "emerald", roast: "healthy screen-time propaganda", ascending: true },
   { title: "Food Vacuum", metric: "Food eaten", field: "foodEaten", suffix: "snacks", category: "Activity", tone: "sky", roast: "server fridge destroyer" },
-  { title: "Snack Minimalist", metric: "Food eaten", field: "foodEaten", suffix: "snacks", category: "Activity", tone: "emerald", roast: "living off vibes", ascending: true },
-  { title: "Ore Accountant", metric: "Diamonds", field: "diamonds", suffix: "💎", category: "Mining", tone: "cyan", roast: "spreadsheeting the sparkle" },
-  { title: "Pacifist Watch", metric: "Mobs killed", field: "mobsKilled", suffix: "kills", category: "Combat", tone: "amber", roast: "letting skeletons unionize", ascending: true },
-  { title: "Score Underdog", metric: "Score", field: "score", suffix: "pts", category: "Overall", tone: "violet", roast: "comeback arc loading", ascending: true },
+  { title: "Diamond Pace", metric: "Diamonds/hour", field: "diamondsPerHour", suffix: "💎/hr", category: "Efficiency", tone: "cyan", roast: "finding shiny things on a schedule" },
+  { title: "Strip-Mine Speed", metric: "Blocks mined/hour", field: "blocksMinedPerHour", suffix: "blocks/hr", category: "Efficiency", tone: "cyan", roast: "tunnel machine with snacks" },
+  { title: "Build Pace", metric: "Blocks placed/hour", field: "blocksPlacedPerHour", suffix: "placed/hr", category: "Efficiency", tone: "violet", roast: "speedrunning questionable architecture" },
+  { title: "Crafting Pace", metric: "Items crafted/hour", field: "itemsCraftedPerHour", suffix: "crafted/hr", category: "Efficiency", tone: "violet", roast: "recipe book on fire" },
+  { title: "Mob Pace", metric: "Mobs killed/hour", field: "mobsKilledPerHour", suffix: "kills/hr", category: "Efficiency", tone: "rose", roast: "violence per hour KPI" },
+  { title: "Damage Pace", metric: "Damage dealt/hour", field: "damageDealtPerHour", suffix: "damage/hr", category: "Efficiency", tone: "rose", roast: "turning playtime into pain" },
+  { title: "Safety Rating", metric: "Deaths/hour", field: "deathsPerHour", suffix: "deaths/hr", category: "Survival", tone: "emerald", roast: "least likely to feed the void", ascending: true },
+  { title: "Snack Tempo", metric: "Food eaten/hour", field: "foodEatenPerHour", suffix: "snacks/hr", category: "Efficiency", tone: "sky", roast: "calories converted into progress" },
 ] as const;
