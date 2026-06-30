@@ -4,7 +4,7 @@ import test from "node:test";
 import { boards } from "../src/lib/sample-data";
 
 test("leaderboard boards include more scannable statistics", () => {
-  assert.equal(boards.length, 12);
+  assert.equal(boards.length, 20);
   assert.deepEqual(boards.map((board) => board.title), [
     "Overall MVP",
     "Richest Miner",
@@ -14,14 +14,23 @@ test("leaderboard boards include more scannable statistics", () => {
     "Mob Menace",
     "Heavy Hitter",
     "Pain Sponge",
+    "Untouchable",
     "Death Tax",
+    "Respawn Regular",
     "Wanderer",
+    "Homebody",
     "Addict Board",
+    "Casual Visitor",
     "Food Vacuum",
+    "Snack Minimalist",
+    "Ore Accountant",
+    "Pacifist Watch",
+    "Score Underdog",
   ]);
   assert.ok(boards.some((board) => board.field === "score"));
   assert.ok(boards.some((board) => board.field === "damageDealt"));
   assert.ok(boards.some((board) => board.field === "blocksPlaced"));
+  assert.equal(boards.filter((board) => "ascending" in board && board.ascending).length, 7);
   assert.ok(new Set(boards.map((board) => board.category)).size >= 5);
 });
 
