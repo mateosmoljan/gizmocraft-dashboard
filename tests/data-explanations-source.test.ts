@@ -12,7 +12,7 @@ test("data grid elements expose exclamation explanation buttons", () => {
   const dashboardSource = readFileSync("src/components/dashboard.tsx", "utf8");
   assert.match(dashboardSource, /import \{ DataExplainButton \} from "@\/components\/data-explain-button"/);
   assert.match(dashboardSource, /<Stat label="Score"[\s\S]*explanation=/);
-  assert.match(dashboardSource, /<DataExplainButton label=\{b\.title\} explanation=\{boardExplanation\(b\.title, b\.metric\)\}/);
+  assert.match(dashboardSource, /<DataExplainButton label=\{board\.title\} explanation=\{boardExplanation\(board\.title, board\.metric\)\}/);
 
   const usageSource = readFileSync("src/components/usage-dashboard.tsx", "utf8");
   assert.match(usageSource, /import \{ DataExplainButton \} from "@\/components\/data-explain-button"/);

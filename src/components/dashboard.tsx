@@ -22,7 +22,8 @@ function formatRelativeRefresh(lastFetchedAt: number | null, now: number) {
   return remainingSeconds ? `${minutes}m ${remainingSeconds}s ago` : `${minutes}m ago`;
 }
 
-function formatBoardValue(value: number, suffix: string) {
+function formatBoardValue(value: number, suffix: string, field?: keyof DashboardPlayer) {
+  if (field === "playHours") return formatPlaytimeHours(value);
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(2));
   return `${format(rounded)} ${suffix}`;
 }
@@ -53,7 +54,26 @@ function explainStat(label: string) {
 }
 
 function boardExplanation(title: string, metric: string) {
-  return `${title} ranks tracked players by ${metric}. The podium updates from live bridge data when available.`;
+  return `${title} ranks tracked players by ${metric}. The podium updates automatically from the latest database response.`;
+}
+
+type BoardDefinition = typeof boardDefinitions[number];
+
+const boardToneClasses: Record<BoardDefinition["tone"], { ring: string; pill: string; glow: string; bar: string }> = {
+  emerald: { ring: "border-emerald-300/20 bg-emerald-300/8", pill: "bg-emerald-300/12 text-emerald-100 border-emerald-300/25", glow: "from-emerald-300/18", bar: "bg-emerald-300" },
+  cyan: { ring: "border-cyan-300/20 bg-cyan-300/8", pill: "bg-cyan-300/12 text-cyan-100 border-cyan-300/25", glow: "from-cyan-300/18", bar: "bg-cyan-300" },
+  violet: { ring: "border-violet-300/20 bg-violet-300/8", pill: "bg-violet-300/12 text-violet-100 border-violet-300/25", glow: "from-violet-300/18", bar: "bg-violet-300" },
+  rose: { ring: "border-rose-300/20 bg-rose-300/8", pill: "bg-rose-300/12 text-rose-100 border-rose-300/25", glow: "from-rose-300/18", bar: "bg-rose-300" },
+  amber: { ring: "border-amber-300/20 bg-amber-300/8", pill: "bg-amber-300/12 text-amber-100 border-amber-300/25", glow: "from-amber-300/18", bar: "bg-amber-300" },
+  sky: { ring: "border-sky-300/20 bg-sky-300/8", pill: "bg-sky-300/12 text-sky-100 border-sky-300/25", glow: "from-sky-300/18", bar: "bg-sky-300" },
+};
+
+function rankBoard(players: DashboardPlayer[], board: BoardDefinition) {
+  const ascending = "ascending" in board && board.ascending;
+  return [...players].sort((a, b) => {
+    const diff = Number(a[board.field]) - Number(b[board.field]);
+    return ascending ? diff : -diff;
+  });
 }
 
 export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView }) {
@@ -242,49 +262,113 @@ function PlayerCard({ player: p, rank }: { player: DashboardPlayer; rank: number
 }
 
 function BoardsSection({ players, boards, loading }: { players: DashboardPlayer[]; boards: typeof boardDefinitions; loading: boolean }) {
+  const featuredBoards = boards.slice(0, 3);
+  const categories = Array.from(new Set(boards.map((board) => board.category)));
+
   return (
-    <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-      <div className="flex items-start justify-between gap-3">
+    <section className="space-y-5 rounded-3xl border border-white/10 bg-slate-950/60 p-5 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-2xl font-black">Public shame boards</h2>
-          <p className="mt-1 text-sm text-slate-400">Live rivalry cards from the world files, one board page instead of a giant scroll.</p>
+          <p className="text-xs font-black uppercase tracking-[0.32em] text-emerald-200/70">Rivalry center</p>
+          <h2 className="mt-2 text-3xl font-black tracking-tight text-white md:text-4xl">Boards that are easy to scan</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">More categories, clearer winners, and top-three rows grouped by mining, building, combat, survival, and activity.</p>
         </div>
-        <span className="rounded-full border border-rose-300/30 bg-rose-300/10 px-3 py-1 text-xs font-bold text-rose-100">{boards.length} boards</span>
+        <div className="flex flex-wrap gap-2 text-xs font-bold">
+          <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-slate-200">{boards.length} boards</span>
+          <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1.5 text-emerald-100">{players.length || "—"} tracked players</span>
+        </div>
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        {boards.map((b) => {
-          const ascending = "ascending" in b && b.ascending;
-          const ranked = [...players].sort((a,bp) => ascending ? Number(a[b.field]) - Number(bp[b.field]) : Number(bp[b.field]) - Number(a[b.field]));
+
+      <div className="flex gap-2 overflow-x-auto pb-1 text-xs font-black uppercase tracking-[0.18em] text-slate-300">
+        {categories.map((category) => <span key={category} className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2">{category}</span>)}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {featuredBoards.map((board, index) => {
+          const ranked = rankBoard(players, board);
           const winner = ranked[0] ?? null;
-          const podium = ranked.slice(0, 3);
+          const tone = boardToneClasses[board.tone];
           return (
-            <div key={b.title} className="rounded-2xl border border-emerald-300/10 bg-emerald-300/8 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm text-emerald-200">{b.title} · {b.metric}</p>
-                <DataExplainButton label={b.title} explanation={boardExplanation(b.title, b.metric)} />
+            <article key={`featured-${board.title}`} className={`relative overflow-hidden rounded-3xl border ${tone.ring} p-5`}>
+              <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${tone.glow} to-transparent opacity-80`} />
+              <div className="relative">
+                <div className="flex items-center justify-between gap-3">
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${tone.pill}`}>#{index + 1} featured</span>
+                  <DataExplainButton label={board.title} explanation={boardExplanation(board.title, board.metric)} />
+                </div>
+                <p className="mt-4 text-sm font-bold text-slate-300">{board.category} · {board.metric}</p>
+                <h3 className="mt-1 text-2xl font-black text-white">{board.title}</h3>
+                {loading ? <DataSkeleton className="mt-4 h-10 w-40" /> : winner ? <p className="mt-4 text-3xl font-black text-white">{winner.name}</p> : <p className="mt-4 text-sm font-bold text-slate-300">No player data loaded yet</p>}
+                {loading ? <DataSkeleton className="mt-3 h-5 w-52" /> : winner ? <p className="mt-2 text-sm text-slate-300">{formatBoardValue(Number(winner[board.field]), board.suffix, board.field)} · {board.roast}</p> : <p className="mt-2 text-sm text-slate-400">Waiting for live bridge data.</p>}
               </div>
-              {loading ? <DataSkeleton className="mt-2 h-7 w-36" /> : winner ? <p className="mt-1 text-xl font-black">{winner.name}</p> : <p className="mt-1 text-sm font-bold text-slate-300">No player data loaded yet</p>}
-              {loading ? <DataSkeleton className="mt-2 h-4 w-56" /> : winner ? <p className="text-sm text-slate-300">{formatBoardValue(Number(winner[b.field]), b.suffix)} · {"roast" in b ? b.roast : "top tracked player"}</p> : <p className="text-sm text-slate-400">Waiting for live bridge data.</p>}
-              <div className="mt-3 space-y-2">
-                {loading ? [0, 1, 2].map((index) => (
-                  <div key={`${b.title}-loading-${index}`} className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm">
-                    <DataSkeleton className="h-4 w-24" />
-                    <DataSkeleton className="h-4 w-16" />
-                  </div>
-                )) : podium.map((p, index) => (
-                  <div key={`${b.title}-${p.uuid}`} className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm">
-                    <span className="font-bold text-slate-100">#{index + 1} {p.name}</span>
-                    <span className="text-right text-slate-300">{formatBoardValue(Number(p[b.field]), b.suffix)} · {formatPlaytimeHours(p.playHours)} played</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            </article>
           );
         })}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {boards.map((board) => <BoardCard key={board.title} board={board} players={players} loading={loading} />)}
       </div>
     </section>
   );
 }
+
+function BoardCard({ board, players, loading }: { board: BoardDefinition; players: DashboardPlayer[]; loading: boolean }) {
+  const ranked = rankBoard(players, board);
+  const winner = ranked[0] ?? null;
+  const podium = ranked.slice(0, 3);
+  const tone = boardToneClasses[board.tone];
+
+  return (
+    <article className={`overflow-hidden rounded-3xl border ${tone.ring} shadow-lg shadow-black/10`}>
+      <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-black/20 p-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] ${tone.pill}`}>{board.category}</span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-300">{board.metric}</span>
+          </div>
+          <h3 className="mt-3 text-2xl font-black tracking-tight text-white">{board.title}</h3>
+        </div>
+        <DataExplainButton label={board.title} explanation={boardExplanation(board.title, board.metric)} />
+      </div>
+
+      <div className="grid gap-4 p-4 md:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-2xl border border-white/10 bg-slate-950/55 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Current leader</p>
+          {loading ? <DataSkeleton className="mt-4 h-9 w-36" /> : winner ? <p className="mt-3 truncate text-3xl font-black text-white">{winner.avatar} {winner.name}</p> : <p className="mt-3 text-sm font-bold text-slate-300">No player data loaded yet</p>}
+          {loading ? <DataSkeleton className="mt-3 h-5 w-44" /> : winner ? <p className="mt-2 text-sm font-bold text-slate-300">{formatBoardValue(Number(winner[board.field]), board.suffix, board.field)}</p> : <p className="mt-2 text-sm text-slate-500">Waiting for live bridge data.</p>}
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <MiniMetric label="Players" value={loading ? null : String(players.length)} loading={loading} />
+            <MiniMetric label="Sort" value={("ascending" in board && board.ascending) ? "Low wins" : "High wins"} loading={false} />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Top 3</p>
+          {loading ? [0, 1, 2].map((index) => <BoardRowSkeleton key={index} />) : podium.length ? podium.map((player, index) => (
+            <div key={`${board.title}-${player.uuid}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5 text-sm">
+              <span className={`grid size-8 place-items-center rounded-full text-xs font-black text-slate-950 ${tone.bar}`}>{index + 1}</span>
+              <div className="min-w-0">
+                <p className="truncate font-black text-slate-100">{player.name}</p>
+                <p className="truncate text-xs text-slate-500">{formatPlaytimeHours(player.playHours)} played</p>
+              </div>
+              <p className="text-right font-black text-white">{formatBoardValue(Number(player[board.field]), board.suffix, board.field)}</p>
+            </div>
+          )) : <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-slate-300">No rankings yet.</p>}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function MiniMetric({ label, value, loading }: { label: string; value: string | null; loading: boolean }) {
+  return <div className="rounded-xl bg-black/30 p-3"><p className="text-slate-500">{label}</p>{loading ? <DataSkeleton className="mt-2 h-4 w-10" /> : <p className="mt-1 font-black text-white">{value}</p>}</div>;
+}
+
+function BoardRowSkeleton() {
+  return <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5"><DataSkeleton className="size-8 rounded-full" /><DataSkeleton className="h-5 w-32" /><DataSkeleton className="h-5 w-16" /></div>;
+}
+
 
 function Stat({ label, value, loading = false, explanation = explainStat(label) }: { label: string; value: string | null; loading?: boolean; explanation?: string }) {
   return (
