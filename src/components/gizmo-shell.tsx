@@ -7,61 +7,14 @@ import { Activity, BarChart3, Camera, Hammer, Settings, Trophy, UserRound, Users
 import { gizmoNavItems } from "@/lib/navigation";
 import { InstallAppButton } from "@/components/install-app-button";
 import { MinecraftScene } from "@/components/minecraft-scene";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
 
 const icons = [BarChart3, Hammer, Camera, UserRound, Trophy, Activity, Users, Settings];
-type AppStats = { online: number; totalSignedIn: number; live: boolean };
-type AppStatsState = AppStats | null;
-const APP_STATS_TOTAL_CACHE_KEY = "gizmocraft:max-google-users-total";
-const APP_STATS_ACTIVE_CACHE_KEY = "gizmocraft:last-active-app-users";
-
 export function GizmoShell({ children }: { children: React.ReactNode; title?: string; subtitle?: string }) {
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
-  const [appStats, setAppStats] = useState<AppStatsState>(null);
-
   useEffect(() => {
     setPendingHref(null);
   }, [pathname]);
-
-  useEffect(() => {
-    let cancelled = false;
-    function withStableStats(stats: AppStats) {
-      const previous = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
-      const previousTotal = typeof previous === "number" && Number.isFinite(previous) ? previous : 0;
-      const previousActive = readClientCache<number>(APP_STATS_ACTIVE_CACHE_KEY);
-      const previousOnline = typeof previousActive === "number" && Number.isFinite(previousActive) ? previousActive : 0;
-      const totalSignedIn = Math.max(previousTotal, Number(stats.totalSignedIn ?? 0));
-      const online = Math.max(previousOnline, Number(stats.online ?? 0));
-      writeClientCache(APP_STATS_TOTAL_CACHE_KEY, totalSignedIn);
-      if (online > 0) writeClientCache(APP_STATS_ACTIVE_CACHE_KEY, online);
-      return { ...stats, online, totalSignedIn };
-    }
-
-    async function loadAppStats() {
-      const res = await fetch("/api/app-stats", { cache: "no-store" });
-      if (!res.ok) {
-        if (!cancelled) setAppStats(null);
-        return;
-      }
-      const data = await res.json();
-      if (!cancelled) {
-        setAppStats(data.stats ? withStableStats(data.stats) : null);
-      }
-    }
-    async function touchAppActivity() {
-      await fetch("/api/app-stats", { method: "POST", cache: "no-store" }).catch(() => undefined);
-    }
-    void loadAppStats();
-    void touchAppActivity().then(loadAppStats);
-    const interval = window.setInterval(() => {
-      void touchAppActivity().then(loadAppStats);
-    }, 60_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, []);
 
   const pending = pendingHref !== null && pendingHref !== pathname;
 
@@ -109,20 +62,6 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
 
           <InstallAppButton />
 
-          <div className="mt-4 rounded-3xl border border-emerald-300/20 bg-emerald-300/8 p-4 lg:mt-auto">
-            <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/70">App users</p>
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                {appStats ? <p className="text-2xl font-black text-white">{appStats.online}</p> : <ShellDataSkeleton />}
-                <p className="text-xs text-slate-400">active last 5 min</p>
-              </div>
-              <div>
-                {appStats ? <p className="text-2xl font-black text-white">{appStats.totalSignedIn}</p> : <ShellDataSkeleton />}
-                <p className="text-xs text-slate-400">Google users total</p>
-              </div>
-            </div>
-            <p className="mt-3 text-[11px] text-slate-500">{appStats?.live ? "Live app activity only, not Minecraft players." : "Waiting for live app activity."}</p>
-          </div>
         </aside>
 
         <main className="min-w-0 flex-1 px-5 py-6 md:px-8 lg:ml-72 lg:px-10">
@@ -131,8 +70,4 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
       </div>
     </div>
   );
-}
-
-function ShellDataSkeleton() {
-  return <span className="block h-8 w-10 animate-pulse rounded-lg bg-emerald-200/15" aria-label="Loading app users" />;
 }

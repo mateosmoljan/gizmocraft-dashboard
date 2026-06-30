@@ -17,17 +17,11 @@ test("app stats API separates public reads from signed-in heartbeat writes", () 
   assert.match(routeSource, /touchAndReadAppUserStats/);
 });
 
-test("sidebar preserves the all-time Google user total across refreshes", () => {
+test("sidebar no longer shows the confusing app users card", () => {
   const shellSource = readFileSync("src/components/gizmo-shell.tsx", "utf8");
-  assert.match(shellSource, /APP_STATS_TOTAL_CACHE_KEY = "gizmocraft:max-google-users-total"/);
-  assert.match(shellSource, /Math\.max\(previousTotal, Number\(stats\.totalSignedIn \?\? 0\)\)/);
-  assert.match(shellSource, /method: "POST"/);
-  assert.match(shellSource, /ShellDataSkeleton/);
-});
-
-test("sidebar preserves last active count during refresh heartbeat", () => {
-  const shellSource = readFileSync("src/components/gizmo-shell.tsx", "utf8");
-  assert.match(shellSource, /APP_STATS_ACTIVE_CACHE_KEY = "gizmocraft:last-active-app-users"/);
-  assert.match(shellSource, /Math\.max\(previousOnline, Number\(stats\.online \?\? 0\)\)/);
-  assert.doesNotMatch(shellSource, /setAppStats\(\{ online: 0, totalSignedIn: cachedTotal, live: false \}\)/);
+  assert.doesNotMatch(shellSource, /App users/);
+  assert.doesNotMatch(shellSource, /active last 5 min/);
+  assert.doesNotMatch(shellSource, /Google users total/);
+  assert.doesNotMatch(shellSource, /Live app activity only, not Minecraft players/);
+  assert.doesNotMatch(shellSource, /api\/app-stats|APP_STATS|touchAppActivity|ShellDataSkeleton/);
 });
