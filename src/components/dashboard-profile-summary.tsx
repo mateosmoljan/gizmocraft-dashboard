@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { formatPlaytimeMs } from "@/lib/playtime";
 
 type ProfileResponse = {
@@ -22,17 +21,12 @@ type ProfileResponse = {
   };
 };
 
-const PROFILE_CACHE_KEY = "gizmocraft:last-auth-profile";
-
 export function DashboardProfileSummary() {
   const [payload, setPayload] = useState<ProfileResponse | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const cached = readClientCache<ProfileResponse>(PROFILE_CACHE_KEY);
-    if (cached?.profile) setPayload(cached);
-
     async function loadProfile() {
       try {
         const res = await fetch("/api/profile", { cache: "no-store" });
@@ -41,7 +35,6 @@ export function DashboardProfileSummary() {
         if (!cancelled) {
           setPayload(next);
           setFailed(false);
-          writeClientCache(PROFILE_CACHE_KEY, next);
         }
       } catch {
         if (!cancelled) setFailed(true);
@@ -85,7 +78,7 @@ export function DashboardProfileSummary() {
             </p>
           </div>
           {profile.player?.totalPlayMs != null ? <p className="rounded-xl bg-emerald-300/10 px-3 py-2 font-bold text-emerald-100">Minecraft playtime: {formatPlaytimeMs(profile.player.totalPlayMs)}</p> : null}
-          {failed ? <p className="text-xs text-amber-200">Showing last loaded profile until live profile responds.</p> : null}
+          {failed ? <p className="text-xs text-amber-200">Waiting for live profile data.</p> : null}
         </div>
       </div>
 

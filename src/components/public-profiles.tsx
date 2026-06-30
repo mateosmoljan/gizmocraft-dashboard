@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { formatPlaytimeHours, formatPlaytimeMs } from "@/lib/playtime";
 
 type PublicProfile = {
@@ -19,46 +18,25 @@ type PublicProfile = {
 };
 
 type ProfilesPayload = { profiles: PublicProfile[]; live: boolean; fetchedAt: number };
-const PROFILES_CACHE_KEY = "gizmocraft:last-public-profiles";
 const PROFILES_AUTO_REFRESH_MS = 30 * 1000;
 
 export function PublicProfiles() {
   const [payload, setPayload] = useState<ProfilesPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const profiles = useMemo(() => payload?.profiles ?? [], [payload]);
 
-  async function refresh(force = false) {
-    if (force) setRefreshing(true);
-    try {
-      const res = await fetch("/api/profiles", { cache: "no-store" });
-      if (!res.ok) throw new Error(`profiles ${res.status}`);
-      const next = { ...(await res.json()), fetchedAt: Date.now() } as ProfilesPayload;
-      setPayload(next);
-      writeClientCache(PROFILES_CACHE_KEY, next);
-      setFailed(false);
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
 
-    const loadProfiles = async (force = false) => {
-      if (force && !cancelled) setRefreshing(true);
+    const loadProfiles = async () => {
       try {
         const res = await fetch("/api/profiles", { cache: "no-store" });
         if (!res.ok) throw new Error(`profiles ${res.status}`);
         const next = { ...(await res.json()), fetchedAt: Date.now() } as ProfilesPayload;
         if (!cancelled) {
           setPayload(next);
-          writeClientCache(PROFILES_CACHE_KEY, next);
           setFailed(false);
         }
       } catch {
@@ -66,24 +44,17 @@ export function PublicProfiles() {
       } finally {
         if (!cancelled) {
           setLoading(false);
-          setRefreshing(false);
         }
       }
     };
 
-    const cached = readClientCache<ProfilesPayload>(PROFILES_CACHE_KEY);
-    if (cached?.profiles?.length) {
-      setPayload(cached);
-      setLoading(false);
-    }
-
-    void loadProfiles(false);
+    void loadProfiles();
 
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadProfiles(false);
+      if (document.visibilityState === "visible") void loadProfiles();
     }, PROFILES_AUTO_REFRESH_MS);
 
-    const refreshOnFocus = () => void loadProfiles(false);
+    const refreshOnFocus = () => void loadProfiles();
     window.addEventListener("focus", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshOnFocus);
 
@@ -101,11 +72,10 @@ export function PublicProfiles() {
         <div>
           <p className="text-sm uppercase tracking-[0.35em] text-emerald-200/80">GizmoCraft people</p>
           <h1 className="mt-2 text-4xl font-black">Public profiles</h1>
-          <p className="mt-2 text-sm text-slate-400">{refreshing ? "Updating profiles…" : payload ? failed ? "Showing saved profiles" : "Profiles ready" : "Loading profiles"}</p>
+          <p className="mt-2 text-sm text-slate-400">{payload ? failed ? "Waiting for live profiles" : "Profiles ready" : "Loading profiles"}</p>
         </div>
         <div className="flex items-center gap-3">
           {loading && !profiles.length ? <span className="size-3 animate-pulse rounded-full bg-emerald-300" aria-label="Loading profiles" /> : null}
-          <button type="button" onClick={() => void refresh(true)} disabled={refreshing} className="rounded-full border border-emerald-300/30 px-4 py-2 text-sm font-bold text-emerald-100 disabled:cursor-wait disabled:opacity-60">{refreshing ? "Refreshing…" : "Refresh"}</button>
           <a className="rounded-full bg-emerald-300 px-5 py-3 font-black text-slate-950" href="/profile">Edit my profile</a>
         </div>
       </div>
@@ -115,8 +85,8 @@ export function PublicProfiles() {
           {profiles.map((p) => <ProfileCard key={p.id} profile={p} />)}
         </div>
       ) : loading ? (
-        <div className="grid min-h-48 place-items-center rounded-3xl border border-white/10 bg-white/8 p-8 backdrop-blur">
-          <span className="size-4 animate-ping rounded-full bg-emerald-300" aria-label="Loading profiles" />
+        <div className="grid gap-4 md:grid-cols-3">
+          {[0, 1, 2].map((index) => <ProfileCardSkeleton key={index} />)}
         </div>
       ) : (
         <div className="rounded-3xl border border-white/10 bg-white/8 p-8 text-slate-300">No public profiles yet. Profiles appear after players sign in with Google.</div>
@@ -146,4 +116,15 @@ function profilePlaytime(player: NonNullable<PublicProfile["player"]>) {
   const snapshotPlayHours = player.snapshots?.[0]?.playHours;
   if (snapshotPlayHours) return formatPlaytimeHours(snapshotPlayHours);
   return "0m";
+}
+
+function ProfileCardSkeleton() {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/8 p-5 backdrop-blur">
+      <span className="block size-16 animate-pulse rounded-2xl bg-emerald-200/15" aria-label="Loading profile" />
+      <span className="mt-4 block h-6 w-32 animate-pulse rounded-lg bg-emerald-200/15" />
+      <span className="mt-3 block h-4 w-44 animate-pulse rounded-lg bg-emerald-200/15" />
+      <span className="mt-3 block h-4 w-28 animate-pulse rounded-lg bg-emerald-200/15" />
+    </div>
+  );
 }

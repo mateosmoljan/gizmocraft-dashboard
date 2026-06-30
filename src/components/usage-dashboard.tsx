@@ -4,12 +4,18 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { ServerUsageData, ServerUsageMetric } from "@/lib/server-usage";
 import type { ChunkSettings } from "@/lib/server-settings";
 import { formatZagrebTime } from "@/lib/time";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { DataExplainButton } from "@/components/data-explain-button";
 
-const USAGE_CACHE_KEY = "gizmocraft:last-usage-data";
-const SETTINGS_CACHE_KEY = "gizmocraft:last-chunk-settings";
 const LIVE_REFRESH_MS = 30_000;
+const USAGE_PLACEHOLDERS: ServerUsageMetric[] = [
+  { label: "CPU", value: "" },
+  { label: "RAM", value: "" },
+  { label: "Minecraft RAM", value: "" },
+  { label: "Disk", value: "" },
+  { label: "Wi‑Fi", value: "" },
+  { label: "Network", value: "" },
+  { label: "Active Minecraft players", value: "" },
+];
 
 export function UsageDashboard({ initialUsage, initialChunkSettings }: { initialUsage: ServerUsageData; initialChunkSettings: ChunkSettings }) {
   const [usage, setUsage] = useState(initialUsage);
@@ -22,26 +28,13 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
-    if (initialUsage.live) {
-      setUsage(initialUsage);
-      writeClientCache(USAGE_CACHE_KEY, initialUsage);
-      return;
-    }
-    const cached = readClientCache<ServerUsageData>(USAGE_CACHE_KEY);
-    if (cached) setUsage({ ...cached, live: false, note: initialUsage.note ?? "Showing last loaded usage data while live telemetry refreshes." });
-    else if (initialUsage.metrics.length) writeClientCache(USAGE_CACHE_KEY, initialUsage);
+    setUsage(initialUsage);
   }, [initialUsage]);
 
   useEffect(() => {
-    if (initialChunkSettings.live) {
-      setChunkSettings(initialChunkSettings);
-      setViewDistance(String(initialChunkSettings.viewDistance ?? ""));
-      setSimulationDistance(String(initialChunkSettings.simulationDistance ?? ""));
-      writeClientCache(SETTINGS_CACHE_KEY, initialChunkSettings);
-      return;
-    }
-    const cached = readClientCache<ChunkSettings>(SETTINGS_CACHE_KEY);
-    if (cached) setChunkSettings({ ...cached, live: false, note: initialChunkSettings.note ?? "Showing last loaded chunk settings while live settings refresh." });
+    setChunkSettings(initialChunkSettings);
+    setViewDistance(String(initialChunkSettings.viewDistance ?? ""));
+    setSimulationDistance(String(initialChunkSettings.simulationDistance ?? ""));
   }, [initialChunkSettings]);
 
   async function refreshUsage(showBusy = true) {
@@ -55,13 +48,11 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
       if (!usageRes.ok) throw new Error(`usage refresh returned ${usageRes.status}`);
       const nextUsage = await usageRes.json();
       setUsage(nextUsage);
-      writeClientCache(USAGE_CACHE_KEY, nextUsage);
       if (settingsRes.ok) {
         const nextSettings = await settingsRes.json();
         setChunkSettings(nextSettings);
         setViewDistance(String(nextSettings.viewDistance ?? ""));
         setSimulationDistance(String(nextSettings.simulationDistance ?? ""));
-        writeClientCache(SETTINGS_CACHE_KEY, nextSettings);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "refresh failed");
@@ -112,7 +103,6 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
       setChunkSettings(body);
       setViewDistance(String(body.viewDistance ?? ""));
       setSimulationDistance(String(body.simulationDistance ?? ""));
-      writeClientCache(SETTINGS_CACHE_KEY, body);
       setSettingsMessage(body.pendingRestart ? "Saved. Restart the Minecraft server for the new chunk distances to fully apply." : "Saved chunk settings.");
     } catch (err) {
       setSettingsMessage(err instanceof Error ? err.message : "Could not save chunk settings.");
@@ -120,6 +110,10 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
       setSavingSettings(false);
     }
   }
+
+  const usageLoading = !usage.live && usage.metrics.length === 0;
+  const usageMetrics = usage.metrics.length ? usage.metrics : USAGE_PLACEHOLDERS;
+  const settingsLoading = !chunkSettings.live && chunkSettings.viewDistance == null && chunkSettings.simulationDistance == null;
 
   return (
     <div className="space-y-6">
@@ -134,17 +128,9 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
           </div>
           <div className="flex flex-col gap-3 md:items-end">
             <div className={`rounded-2xl border px-5 py-4 text-left md:text-right ${usage.live ? "border-lime-300/30 bg-lime-300/10" : "border-amber-300/30 bg-amber-300/10"}`}>
-              <p className={usage.live ? "text-sm text-lime-200" : "text-sm text-amber-200"}>{refreshing ? "Refreshing data" : usage.live ? "Live · 30s refresh" : "Showing last loaded data"}</p>
-              {refreshing ? <UsageSkeleton className="ml-auto mt-2 h-4 w-36" /> : <p className="mt-1 text-xs text-slate-300">Checked {formatZagrebTime(usage.checkedAt)}</p>}
+              <p className={usage.live ? "text-sm text-lime-200" : "text-sm text-amber-200"}>{usageLoading ? "Fetching server database" : usage.live ? "Live · auto-refreshing" : "Waiting for live telemetry"}</p>
+              {usageLoading ? <UsageSkeleton className="ml-auto mt-2 h-4 w-36" /> : <p className="mt-1 text-xs text-slate-300">Checked {formatZagrebTime(usage.checkedAt)}</p>}
             </div>
-            <button
-              type="button"
-              onClick={() => void refreshUsage(true)}
-              disabled={refreshing}
-              className="rounded-full bg-emerald-300 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/30 transition hover:bg-emerald-200 disabled:cursor-wait disabled:opacity-70"
-            >
-              {refreshing ? "Refreshing…" : "Refresh usage data"}
-            </button>
           </div>
         </div>
       </section>
@@ -158,7 +144,7 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {usage.metrics.map((entry) => <UsageCard key={entry.label} metric={entry} refreshing={refreshing} />)}
+        {usageMetrics.map((entry) => <UsageCard key={entry.label} metric={entry} refreshing={refreshing || usageLoading} />)}
       </section>
 
       <section className="rounded-3xl border border-cyan-300/20 bg-cyan-300/8 p-5">
@@ -171,14 +157,14 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
             </p>
           </div>
           <span className={`rounded-full px-3 py-1 text-xs font-black ${chunkSettings.live ? "bg-lime-300 text-slate-950" : "bg-amber-300 text-slate-950"}`}>
-            {chunkSettings.live ? "live settings" : "last loaded settings"}
+            {settingsLoading ? "fetching settings" : chunkSettings.live ? "live settings" : "settings pending"}
           </span>
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <UsageCard metric={{ label: "View distance", value: String(chunkSettings.viewDistance ?? "—"), detail: chunkSettings.effective?.viewAreaChunksPerPlayer ? `${chunkSettings.effective.viewDiameterChunks} × ${chunkSettings.effective.viewDiameterChunks} = ${chunkSettings.effective.viewAreaChunksPerPlayer} visible chunks/player` : undefined }} refreshing={savingSettings} />
-          <UsageCard metric={{ label: "Simulation distance", value: String(chunkSettings.simulationDistance ?? "—"), detail: chunkSettings.effective?.simulationAreaChunksPerPlayer ? `${chunkSettings.effective.simulationDiameterChunks} × ${chunkSettings.effective.simulationDiameterChunks} = ${chunkSettings.effective.simulationAreaChunksPerPlayer} ticking chunks/player` : undefined }} refreshing={savingSettings} />
-          <UsageCard metric={{ label: "Max players", value: String(chunkSettings.maxPlayers ?? "—"), detail: chunkSettings.serverPort ? `Port ${chunkSettings.serverPort}` : undefined }} refreshing={savingSettings} />
-          <UsageCard metric={{ label: "Apply status", value: chunkSettings.pendingRestart ? "Restart needed" : "Active file value", detail: chunkSettings.note ?? "Changes save to server.properties." }} refreshing={savingSettings} />
+          <UsageCard metric={{ label: "View distance", value: String(chunkSettings.viewDistance ?? "—"), detail: chunkSettings.effective?.viewAreaChunksPerPlayer ? `${chunkSettings.effective.viewDiameterChunks} × ${chunkSettings.effective.viewDiameterChunks} = ${chunkSettings.effective.viewAreaChunksPerPlayer} visible chunks/player` : undefined }} refreshing={savingSettings || settingsLoading} />
+          <UsageCard metric={{ label: "Simulation distance", value: String(chunkSettings.simulationDistance ?? "—"), detail: chunkSettings.effective?.simulationAreaChunksPerPlayer ? `${chunkSettings.effective.simulationDiameterChunks} × ${chunkSettings.effective.simulationDiameterChunks} = ${chunkSettings.effective.simulationAreaChunksPerPlayer} ticking chunks/player` : undefined }} refreshing={savingSettings || settingsLoading} />
+          <UsageCard metric={{ label: "Max players", value: String(chunkSettings.maxPlayers ?? "—"), detail: chunkSettings.serverPort ? `Port ${chunkSettings.serverPort}` : undefined }} refreshing={savingSettings || settingsLoading} />
+          <UsageCard metric={{ label: "Apply status", value: chunkSettings.pendingRestart ? "Restart needed" : "Active file value", detail: chunkSettings.note ?? "Changes save to server.properties." }} refreshing={savingSettings || settingsLoading} />
         </div>
         <form onSubmit={saveChunkSettings} className="mt-5 grid gap-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
           <label className="text-sm font-bold text-slate-200">

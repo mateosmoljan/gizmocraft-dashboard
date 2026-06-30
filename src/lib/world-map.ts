@@ -218,7 +218,7 @@ export function mapMemoryMetadata(data: Pick<WorldMapData, "world" | "regions" |
     strategy: [
       "Minecraft server writes discovered coverage into a shared JSON artifact once, not per viewer.",
       "Dashboard API reads that stored world memory and can be edge/browser cached briefly instead of rescanning world files for every user.",
-      "Each browser keeps the last successful map in localStorage so reloads show the known world immediately, then refresh in the background.",
+      "Each open browser session polls the API while visible; UI data slots stay skeletal until the current database response arrives.",
       "Future terrain PNG/vector tiles should use immutable hashed URLs so already-loaded map tiles are reused across visits.",
     ],
   };
@@ -272,7 +272,7 @@ export function emptyWorldMapData(error?: unknown): WorldMapData {
       refreshSeconds: WORLD_MAP_REFRESH_SECONDS,
       version: "offline-empty",
       strategy: [
-        "Keep the last successful browser cache visible when the bridge is offline.",
+        "No browser fallback is shown before the live map database response arrives.",
         "Do not invent undiscovered terrain; empty means no live shared-memory artifact was reachable.",
       ],
     },

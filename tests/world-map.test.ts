@@ -73,10 +73,14 @@ test("world sync modpack zip includes Bliss shaderpack and the auto-installing c
   assert.ok(readFileSync(zipPath).length > 1_700_000);
 });
 
-test("world map dashboard polls uncached live map data", () => {
+test("world map dashboard polls uncached live map data without stale browser fallback or manual refresh", () => {
   const source = readFileSync("src/components/world-map-dashboard.tsx", "utf8");
-  assert.match(source, /window\.setInterval\(\(\) => void refresh\(false\), POLL_MS\)/);
+  assert.match(source, /useState<WorldMapData \| null>\(initialData\.live \? initialData : null\)/);
+  assert.match(source, /const loading = data === null/);
+  assert.match(source, /window\.setInterval\(\(\) => void refreshVisibleMap\(\), POLL_MS\)/);
+  assert.match(source, /document\.visibilityState !== "visible"/);
   assert.match(source, /fetch\(`\/api\/world-map\?ts=\$\{Date\.now\(\)\}`, \{ cache: "no-store" \}\)/);
+  assert.doesNotMatch(source, /readClientCache|writeClientCache|Refresh now|Showing last loaded map|Last loaded map/);
 });
 
 test("normalizeWorldMapTelemetry sanitizes live player coordinates and visited chunk", () => {

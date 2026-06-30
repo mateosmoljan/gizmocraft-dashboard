@@ -2,11 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { emptyWorldMapData, GIZMOCRAFT_WORLD_SYNC_MODPACK, WORLD_MAP_CLIENT_CACHE_KEY, WORLD_MAP_REFRESH_SECONDS } from "@/lib/world-map";
 import type { WorldMapData, WorldMapRegion } from "@/lib/world-map";
 
-const CACHE_KEY = WORLD_MAP_CLIENT_CACHE_KEY;
 const POLL_MS = WORLD_MAP_REFRESH_SECONDS * 1_000;
 
 const emptyMap: WorldMapData = emptyWorldMapData();
@@ -270,7 +268,7 @@ function GlobeScene({ data }: { data: WorldMapData }) {
 }
 
 export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: WorldMapData }) {
-  const [data, setData] = useState<WorldMapData>(initialData);
+  const [data, setData] = useState<WorldMapData | null>(initialData.live ? initialData : null);
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -281,7 +279,6 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
       if (!res.ok) throw new Error(`World map failed: ${res.status}`);
       const next = await res.json();
       setData(next);
-      writeClientCache(CACHE_KEY, next);
       setFailed(false);
     } catch {
       setFailed(true);
@@ -291,22 +288,36 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
   }
 
   useEffect(() => {
-    const cached = readClientCache<WorldMapData>(CACHE_KEY);
-    if (cached && !initialData.live) setData(cached);
-    writeClientCache(CACHE_KEY, initialData);
-    void refresh(false);
-    const timer = window.setInterval(() => void refresh(false), POLL_MS);
-    return () => window.clearInterval(timer);
+    if (initialData.live) setData(initialData);
+
+    async function refreshVisibleMap() {
+      if (document.visibilityState !== "visible") return;
+      await refresh(false);
+    }
+
+    void refreshVisibleMap();
+    const timer = window.setInterval(() => void refreshVisibleMap(), POLL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshVisibleMap();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [initialData]);
 
+  const loading = data === null;
+  const displayData = data ?? emptyMap;
+
   const boundsLabel = useMemo(() => {
-    const bounds = data.world.loadedBlockBounds;
+    const bounds = displayData.world.loadedBlockBounds;
     if (!bounds) return "No discovered region files loaded yet";
     return `X ${format(bounds.minX)} → ${format(bounds.maxX)} · Z ${format(bounds.minZ)} → ${format(bounds.maxZ)}`;
-  }, [data.world.loadedBlockBounds]);
+  }, [displayData.world.loadedBlockBounds]);
 
-  const livePlayers = data.tracking?.livePlayers ?? [];
-  const visitedChunks = data.tracking?.visitedChunks ?? [];
+  const livePlayers = displayData.tracking?.livePlayers ?? [];
+  const visitedChunks = displayData.tracking?.visitedChunks ?? [];
 
   return (
     <div className="space-y-6">
@@ -317,10 +328,9 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
           <p className="mt-3 max-w-3xl text-base text-slate-300">A live globe of the GizmoCraft world. Green tiles are server region files, orange sparks are client-visited chunks, and pink beacons are live players from the new Fabric heartbeat.</p>
         </div>
         <div className="rounded-2xl border border-lime-300/30 bg-lime-300/10 p-5 text-sm">
-          <p className="font-black text-lime-100">{refreshing ? "Refreshing scan…" : data.live ? "Live bridge + client heartbeat · 15s refresh" : failed ? "Showing last loaded map" : "Last loaded map"}</p>
-          <p className="mt-2 text-slate-300">Last scan: {data.world.lastScan}</p>
+          <p className="font-black text-lime-100">{loading ? failed ? "Waiting for database" : "Fetching map database" : displayData.live ? "Live bridge + client heartbeat · auto-refreshing" : "Map database pending"}</p>
+          {loading ? <MapSkeleton className="mt-2 h-5 w-40" /> : <p className="mt-2 text-slate-300">Last scan: {displayData.world.lastScan}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" onClick={() => void refresh(true)} disabled={refreshing} className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-70">{refreshing ? "Refreshing…" : "Refresh now"}</button>
             <a href={GIZMOCRAFT_WORLD_SYNC_MODPACK.href} download={GIZMOCRAFT_WORLD_SYNC_MODPACK.fileName} className="rounded-full border border-white/20 bg-white px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-cyan-100">
               {GIZMOCRAFT_WORLD_SYNC_MODPACK.label}
             </a>
@@ -363,19 +373,19 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-        <GlobeScene data={data} />
+        <GlobeScene data={displayData} />
         <aside className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <Stat label="Discovered regions" value={format(data.world.regionCount)} />
-            <Stat label="Approx. loaded chunks" value={format(data.world.discoveredChunks)} />
-            <Stat label="Live tracked players" value={format(livePlayers.length)} />
-            <Stat label="Client visited chunks" value={format(visitedChunks.length)} />
-            <Stat label="Spawn origin" value={`X ${format(data.world.spawn.x)} · Z ${format(data.world.spawn.z)}`} />
-            <Stat label="Loaded block bounds" value={boundsLabel} />
+            <Stat label="Discovered regions" value={format(displayData.world.regionCount)} loading={loading} />
+            <Stat label="Approx. loaded chunks" value={format(displayData.world.discoveredChunks)} loading={loading} />
+            <Stat label="Live tracked players" value={format(livePlayers.length)} loading={loading} />
+            <Stat label="Client visited chunks" value={format(visitedChunks.length)} loading={loading} />
+            <Stat label="Spawn origin" value={`X ${format(displayData.world.spawn.x)} · Z ${format(displayData.world.spawn.z)}`} loading={loading} />
+            <Stat label="Loaded block bounds" value={boundsLabel} loading={loading} />
           </div>
           <div className="rounded-3xl border border-pink-300/20 bg-pink-300/10 p-5">
             <h2 className="text-xl font-black text-white">Live player beacons</h2>
-            <p className="mt-1 text-sm text-pink-100/80">{data.tracking?.liveTelemetryAt ? `Last heartbeat ${data.tracking.liveTelemetryAt}` : "Waiting for a client heartbeat from the v0.2.0 mod."}</p>
+            <p className="mt-1 text-sm text-pink-100/80">{loading ? "Waiting for map database." : displayData.tracking?.liveTelemetryAt ? `Last heartbeat ${displayData.tracking.liveTelemetryAt}` : "Waiting for a client heartbeat from the v0.2.0 mod."}</p>
             <div className="mt-4 space-y-2">
               {livePlayers.length ? livePlayers.map((player) => (
                 <div key={player.name} className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm">
@@ -388,9 +398,9 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
           </div>
           <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
             <h2 className="text-xl font-black">Data visibility plan</h2>
-            <Visibility label="Available to everyone" items={data.visibility.public} tone="emerald" />
-            <Visibility label="Signed-in overlays later" items={data.visibility.signedIn} tone="sky" />
-            <Visibility label="Restricted/private later" items={data.visibility.restricted} tone="rose" />
+            <Visibility label="Available to everyone" items={displayData.visibility.public} tone="emerald" />
+            <Visibility label="Signed-in overlays later" items={displayData.visibility.signedIn} tone="sky" />
+            <Visibility label="Restricted/private later" items={displayData.visibility.restricted} tone="rose" />
           </div>
         </aside>
       </section>
@@ -399,8 +409,12 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-3xl border border-white/10 bg-white/8 p-5"><p className="text-sm text-slate-400">{label}</p><p className="mt-2 text-2xl font-black text-white">{value}</p></div>;
+function MapSkeleton({ className = "h-6 w-24" }: { className?: string }) {
+  return <span className={`block animate-pulse rounded-lg bg-cyan-200/15 ${className}`} aria-label="Loading data" />;
+}
+
+function Stat({ label, value, loading = false }: { label: string; value: string; loading?: boolean }) {
+  return <div className="rounded-3xl border border-white/10 bg-white/8 p-5"><p className="text-sm text-slate-400">{label}</p>{loading ? <MapSkeleton className="mt-2 h-7 w-28" /> : <p className="mt-2 text-2xl font-black text-white">{value}</p>}</div>;
 }
 
 function Visibility({ label, items, tone }: { label: string; items: string[]; tone: "emerald" | "sky" | "rose" }) {

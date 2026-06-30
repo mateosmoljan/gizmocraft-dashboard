@@ -26,13 +26,6 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
 
   useEffect(() => {
     let cancelled = false;
-    const cachedTotal = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
-    const cachedOnline = readClientCache<number>(APP_STATS_ACTIVE_CACHE_KEY);
-    if (typeof cachedTotal === "number" && Number.isFinite(cachedTotal)) {
-      const online = typeof cachedOnline === "number" && Number.isFinite(cachedOnline) ? cachedOnline : 0;
-      setAppStats({ online, totalSignedIn: cachedTotal, live: false });
-    }
-
     function withStableStats(stats: AppStats) {
       const previous = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
       const previousTotal = typeof previous === "number" && Number.isFinite(previous) ? previous : 0;
@@ -48,12 +41,7 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
     async function loadAppStats() {
       const res = await fetch("/api/app-stats", { cache: "no-store" });
       if (!res.ok) {
-        if (!cancelled) {
-          const fallbackTotal = readClientCache<number>(APP_STATS_TOTAL_CACHE_KEY);
-          const fallbackOnline = readClientCache<number>(APP_STATS_ACTIVE_CACHE_KEY);
-          const online = typeof fallbackOnline === "number" && Number.isFinite(fallbackOnline) ? fallbackOnline : 0;
-          setAppStats(typeof fallbackTotal === "number" ? { online, totalSignedIn: fallbackTotal, live: false } : null);
-        }
+        if (!cancelled) setAppStats(null);
         return;
       }
       const data = await res.json();
@@ -125,15 +113,15 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
             <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/70">App users</p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-2xl font-black text-white">{appStats ? appStats.online : "—"}</p>
+                {appStats ? <p className="text-2xl font-black text-white">{appStats.online}</p> : <ShellDataSkeleton />}
                 <p className="text-xs text-slate-400">active last 5 min</p>
               </div>
               <div>
-                <p className="text-2xl font-black text-white">{appStats ? appStats.totalSignedIn : "—"}</p>
+                {appStats ? <p className="text-2xl font-black text-white">{appStats.totalSignedIn}</p> : <ShellDataSkeleton />}
                 <p className="text-xs text-slate-400">Google users total</p>
               </div>
             </div>
-            <p className="mt-3 text-[11px] text-slate-500">{appStats?.live ? "Live app activity only, not Minecraft players." : appStats ? "Showing saved Google total; live activity unavailable." : "Live app activity unavailable."}</p>
+            <p className="mt-3 text-[11px] text-slate-500">{appStats?.live ? "Live app activity only, not Minecraft players." : "Waiting for live app activity."}</p>
           </div>
         </aside>
 
@@ -143,4 +131,8 @@ export function GizmoShell({ children }: { children: React.ReactNode; title?: st
       </div>
     </div>
   );
+}
+
+function ShellDataSkeleton() {
+  return <span className="block h-8 w-10 animate-pulse rounded-lg bg-emerald-200/15" aria-label="Loading app users" />;
 }

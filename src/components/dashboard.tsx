@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { boards as fallbackBoards, players as fallbackPlayers, worldStats as fallbackWorldStats } from "@/lib/sample-data";
-import type { DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
+import { boards as boardDefinitions } from "@/lib/sample-data";
+import type { DashboardData, DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 import { formatPlaytimeHours } from "@/lib/playtime";
 import { DashboardProfileSummary } from "@/components/dashboard-profile-summary";
 import { DataExplainButton } from "@/components/data-explain-button";
@@ -11,10 +10,7 @@ import { DataExplainButton } from "@/components/data-explain-button";
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
 type DashboardView = "overview" | "players" | "boards";
-type DashboardData = { players: DashboardPlayer[]; worldStats: DashboardWorld; boards: typeof fallbackBoards; live: boolean };
-const DASHBOARD_CACHE_KEY = "gizmocraft:last-dashboard-data:v2-live-status";
 const LIVE_REFRESH_MS = 30_000;
-const initialDashboardData = (): DashboardData => ({ players: fallbackPlayers, worldStats: fallbackWorldStats, boards: fallbackBoards, live: false });
 
 function formatRelativeRefresh(lastFetchedAt: number | null, now: number) {
   if (!lastFetchedAt) return "not fetched this session yet";
@@ -61,23 +57,20 @@ function boardExplanation(title: string, metric: string) {
 }
 
 export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView }) {
-  const [data, setData] = useState<DashboardData>(initialDashboardData);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [failed, setFailed] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const refreshInFlight = useRef(false);
 
-  async function refresh(showSkeleton = false, syncBridge = false) {
+  async function refresh(syncBridge = true) {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
-    if (showSkeleton) setRefreshing(true);
     try {
       const res = await fetch(`/api/dashboard?ts=${Date.now()}${syncBridge ? "&refresh=1" : ""}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Dashboard data failed: ${res.status}`);
       const nextData = await res.json();
       setData(nextData);
-      writeClientCache(DASHBOARD_CACHE_KEY, nextData);
       const fetchedAt = Date.now();
       setLastFetchedAt(fetchedAt);
       setNow(fetchedAt);
@@ -86,17 +79,13 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
       setFailed(true);
     } finally {
       refreshInFlight.current = false;
-      setRefreshing(false);
     }
   }
 
   useEffect(() => {
-    const cached = readClientCache<DashboardData>(DASHBOARD_CACHE_KEY);
-    if (cached) setData(cached);
-
     async function refreshVisibleDashboard(syncBridge = true) {
       if (document.visibilityState !== "visible") return;
-      await refresh(false, syncBridge);
+      await refresh(syncBridge);
     }
 
     void refreshVisibleDashboard(true);
@@ -113,17 +102,18 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
     };
   }, []);
 
-  const currentPlayers = data.players;
-  const currentWorldStats = data.worldStats;
-  const currentBoards = data.boards;
+  const loading = data === null;
+  const currentPlayers = data?.players ?? [];
+  const currentWorldStats = data?.worldStats ?? null;
+  const currentBoards = data?.boards ?? boardDefinitions;
 
   return (
     <div className="space-y-6">
-      <Hero worldStats={currentWorldStats} live={Boolean(data.live)} view={view} refreshing={refreshing} failed={failed} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} onRefresh={() => void refresh(true, true)} />
+      <Hero worldStats={currentWorldStats} live={Boolean(data?.live)} view={view} loading={loading} failed={failed} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} />
       {view === "overview" ? <DashboardProfileSummary /> : null}
-      {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data.live)} refreshing={refreshing} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} /> : null}
-      {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data.live)} refreshing={refreshing} /> : null}
-      {view === "boards" ? <BoardsSection players={currentPlayers} boards={currentBoards} refreshing={refreshing} /> : null}
+      {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data?.live)} loading={loading} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} /> : null}
+      {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data?.live)} loading={loading} /> : null}
+      {view === "boards" ? <BoardsSection players={currentPlayers} boards={currentBoards} loading={loading} /> : null}
     </div>
   );
 }
@@ -132,7 +122,7 @@ function DataSkeleton({ className = "h-6 w-24" }: { className?: string }) {
   return <span className={`block animate-pulse rounded-lg bg-emerald-200/15 ${className}`} aria-label="Loading data" />;
 }
 
-function Hero({ worldStats, live, view, refreshing, failed, lastFetchedLabel, onRefresh }: { worldStats: DashboardWorld; live: boolean; view: DashboardView; refreshing: boolean; failed: boolean; lastFetchedLabel: string; onRefresh: () => void }) {
+function Hero({ worldStats, live, view, loading, failed, lastFetchedLabel }: { worldStats: DashboardWorld | null; live: boolean; view: DashboardView; loading: boolean; failed: boolean; lastFetchedLabel: string }) {
   const titles = {
     overview: ["Minecraft Overview", "The clean world snapshot: online state, top score, last sync, and quick links."],
     players: ["Player cards", "One page for tracked players, profiles, and the stats Mateo will roast later."],
@@ -152,23 +142,22 @@ function Hero({ worldStats, live, view, refreshing, failed, lastFetchedLabel, on
         </div>
       </div>
       <div className="min-w-56 rounded-2xl border border-lime-300/30 bg-lime-300/10 px-5 py-4 text-right">
-        <p className="text-sm text-lime-200">{refreshing ? "Refreshing data" : live ? "Live bridge data" : failed ? "Showing last loaded data" : "Last loaded data"}</p>
-        {refreshing ? <DataSkeleton className="ml-auto mt-2 h-7 w-36" /> : <p className="text-xl font-bold">{worldStats.name}</p>}
-        {refreshing ? <DataSkeleton className="ml-auto mt-2 h-4 w-44" /> : <p className="text-sm text-slate-300">{worldStats.difficulty} · {worldStats.trackedPlayers} players tracked</p>}
+        <p className="text-sm text-lime-200">{loading ? failed ? "Waiting for database" : "Fetching database" : live ? "Live bridge data" : "Database pending"}</p>
+        {loading || !worldStats ? <DataSkeleton className="ml-auto mt-2 h-7 w-36" /> : <p className="text-xl font-bold">{worldStats.name}</p>}
+        {loading || !worldStats ? <DataSkeleton className="ml-auto mt-2 h-4 w-44" /> : <p className="text-sm text-slate-300">{worldStats.difficulty} · {worldStats.trackedPlayers} players tracked</p>}
         <p className="mt-2 text-xs text-lime-100/80">Auto-refreshes every 30s while open · fetched {lastFetchedLabel}</p>
-        <button type="button" onClick={onRefresh} disabled={refreshing} className="mt-3 rounded-full bg-lime-300 px-3 py-1.5 text-xs font-black text-slate-950 disabled:cursor-wait disabled:opacity-70">{refreshing ? "Refreshing…" : "Refresh data"}</button>
       </div>
     </header>
   );
 }
 
-function OverviewSection({ players, worldStats, live, refreshing, lastFetchedLabel }: { players: DashboardPlayer[]; worldStats: DashboardWorld; live: boolean; refreshing: boolean; lastFetchedLabel: string }) {
+function OverviewSection({ players, worldStats, live, loading, lastFetchedLabel }: { players: DashboardPlayer[]; worldStats: DashboardWorld | null; live: boolean; loading: boolean; lastFetchedLabel: string }) {
   const top = players[0] ?? null;
   const statCards = [
-    ["Online", live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable", explainStat("Online")],
+    ["Online", !loading && worldStats ? live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable" : null, explainStat("Online")],
     ["Top score", top ? format(top.score) : null, explainStat("Top score")],
-    ["Last database sync", worldStats.lastSync, "When the laptop bridge last loaded fresh Minecraft world/player data into the dashboard database."],
-    ["Website fetch", refreshing ? null : lastFetchedLabel, "How long ago this browser sent a no-cache request to the dashboard API."],
+    ["Last database sync", !loading && worldStats ? worldStats.lastSync : null, "When the laptop bridge last loaded fresh Minecraft world/player data into the dashboard database."],
+    ["Website fetch", loading ? null : lastFetchedLabel, "How long ago this browser sent a no-cache request to the dashboard API."],
   ] as const;
 
   return (
@@ -177,19 +166,19 @@ function OverviewSection({ players, worldStats, live, refreshing, lastFetchedLab
         {statCards.map(([k, v, explanation]) => (
           <div key={k} className="rounded-2xl border border-white/10 bg-white/8 p-5 backdrop-blur">
             <div className="flex items-start justify-between gap-3"><p className="text-sm text-slate-400">{k}</p><DataExplainButton label={k} explanation={explanation} /></div>
-            {refreshing ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v ?? "No data"}</p>}
+            {loading ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v ?? "No data"}</p>}
           </div>
         ))}
       </div>
       <section className="grid gap-5 lg:grid-cols-3">
         <article className="rounded-3xl border border-white/10 bg-slate-950/60 p-5 lg:col-span-2">
           <p className="text-sm uppercase tracking-[0.3em] text-emerald-200/70">Current king</p>
-          {refreshing ? <DataSkeleton className="mt-3 h-12 w-60" /> : top ? <h2 className="mt-2 text-4xl font-black">{top.avatar} {top.name}</h2> : <h2 className="mt-2 text-2xl font-black text-slate-300">No player data loaded yet</h2>}
+          {loading ? <DataSkeleton className="mt-3 h-12 w-60" /> : top ? <h2 className="mt-2 text-4xl font-black">{top.avatar} {top.name}</h2> : <h2 className="mt-2 text-2xl font-black text-slate-300">No player data loaded yet</h2>}
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Stat label="Score" value={!refreshing && top ? format(top.score) : null} explanation={explainStat("Score")} />
-            <Stat label="Diamonds" value={!refreshing && top ? String(top.diamonds) : null} />
-            <Stat label="Mobs killed" value={!refreshing && top ? format(top.mobsKilled) : null} />
-            <Stat label="Total playtime" value={!refreshing && top ? formatPlaytimeHours(top.playHours) : null} />
+            <Stat label="Score" value={!loading && top ? format(top.score) : null} loading={loading} explanation={explainStat("Score")} />
+            <Stat label="Diamonds" value={!loading && top ? String(top.diamonds) : null} loading={loading} />
+            <Stat label="Mobs killed" value={!loading && top ? format(top.mobsKilled) : null} loading={loading} />
+            <Stat label="Total playtime" value={!loading && top ? formatPlaytimeHours(top.playHours) : null} loading={loading} />
           </div>
         </article>
         <article className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
@@ -204,12 +193,12 @@ function OverviewSection({ players, worldStats, live, refreshing, lastFetchedLab
   );
 }
 
-function PlayersSection({ players, live, refreshing }: { players: DashboardPlayer[]; live: boolean; refreshing: boolean }) {
+function PlayersSection({ players, live, loading }: { players: DashboardPlayer[]; live: boolean; loading: boolean }) {
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-      <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-black">Player profiles</h2><span className="rounded-full bg-emerald-400/15 px-3 py-1 text-sm text-emerald-200">{refreshing ? "Refreshing data" : live ? "Live bridge data · auto-refreshing" : "Last loaded data"}</span></div>
+      <div className="mb-4 flex items-center justify-between"><h2 className="text-2xl font-black">Player profiles</h2><span className="rounded-full bg-emerald-400/15 px-3 py-1 text-sm text-emerald-200">{loading ? "Fetching database" : live ? "Live bridge data · auto-refreshing" : "Database pending"}</span></div>
       <div className="grid gap-4 md:grid-cols-3">
-        {refreshing ? [0, 1, 2].map((index) => <PlayerCardSkeleton key={index} />) : players.length ? players.map((p, index) => <PlayerCard key={p.uuid} player={p} rank={index + 1} />) : <p className="text-sm text-slate-300">No player data loaded yet.</p>}
+        {loading ? [0, 1, 2].map((index) => <PlayerCardSkeleton key={index} />) : players.length ? players.map((p, index) => <PlayerCard key={p.uuid} player={p} rank={index + 1} />) : <p className="text-sm text-slate-300">No player data loaded yet.</p>}
       </div>
     </section>
   );
@@ -222,7 +211,7 @@ function PlayerCardSkeleton() {
       <DataSkeleton className="mt-4 h-8 w-32" />
       <DataSkeleton className="mt-2 h-4 w-40" />
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        {Array.from({ length: 10 }).map((_, index) => <Stat key={index} label="Loading" value={null} />)}
+        {Array.from({ length: 10 }).map((_, index) => <Stat key={index} label="Loading" value={null} loading />)}
       </div>
     </article>
   );
@@ -252,7 +241,7 @@ function PlayerCard({ player: p, rank }: { player: DashboardPlayer; rank: number
   );
 }
 
-function BoardsSection({ players, boards, refreshing }: { players: DashboardPlayer[]; boards: typeof fallbackBoards; refreshing: boolean }) {
+function BoardsSection({ players, boards, loading }: { players: DashboardPlayer[]; boards: typeof boardDefinitions; loading: boolean }) {
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
       <div className="flex items-start justify-between gap-3">
@@ -274,10 +263,10 @@ function BoardsSection({ players, boards, refreshing }: { players: DashboardPlay
                 <p className="text-sm text-emerald-200">{b.title} · {b.metric}</p>
                 <DataExplainButton label={b.title} explanation={boardExplanation(b.title, b.metric)} />
               </div>
-              {refreshing ? <DataSkeleton className="mt-2 h-7 w-36" /> : winner ? <p className="mt-1 text-xl font-black">{winner.name}</p> : <p className="mt-1 text-sm font-bold text-slate-300">No player data loaded yet</p>}
-              {refreshing ? <DataSkeleton className="mt-2 h-4 w-56" /> : winner ? <p className="text-sm text-slate-300">{formatBoardValue(Number(winner[b.field]), b.suffix)} · {"roast" in b ? b.roast : "top tracked player"}</p> : <p className="text-sm text-slate-400">Waiting for live bridge data.</p>}
+              {loading ? <DataSkeleton className="mt-2 h-7 w-36" /> : winner ? <p className="mt-1 text-xl font-black">{winner.name}</p> : <p className="mt-1 text-sm font-bold text-slate-300">No player data loaded yet</p>}
+              {loading ? <DataSkeleton className="mt-2 h-4 w-56" /> : winner ? <p className="text-sm text-slate-300">{formatBoardValue(Number(winner[b.field]), b.suffix)} · {"roast" in b ? b.roast : "top tracked player"}</p> : <p className="text-sm text-slate-400">Waiting for live bridge data.</p>}
               <div className="mt-3 space-y-2">
-                {refreshing ? [0, 1, 2].map((index) => (
+                {loading ? [0, 1, 2].map((index) => (
                   <div key={`${b.title}-loading-${index}`} className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm">
                     <DataSkeleton className="h-4 w-24" />
                     <DataSkeleton className="h-4 w-16" />
@@ -297,11 +286,11 @@ function BoardsSection({ players, boards, refreshing }: { players: DashboardPlay
   );
 }
 
-function Stat({ label, value, explanation = explainStat(label) }: { label: string; value: string | null; explanation?: string }) {
+function Stat({ label, value, loading = false, explanation = explainStat(label) }: { label: string; value: string | null; loading?: boolean; explanation?: string }) {
   return (
     <div className="rounded-xl bg-black/25 p-3">
       <div className="flex items-start justify-between gap-3"><p className="text-slate-400">{label}</p><DataExplainButton label={label} explanation={explanation} /></div>
-      <p className="mt-1 font-bold text-white">{value ?? "No data"}</p>
+      {loading ? <DataSkeleton className="mt-2 h-5 w-20" /> : <p className="mt-1 font-bold text-white">{value ?? "No data"}</p>}
     </div>
   );
 }

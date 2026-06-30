@@ -3,11 +3,9 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Camera, Maximize2, RefreshCw, Radio, UploadCloud, X } from "lucide-react";
-import { readClientCache, writeClientCache } from "@/lib/client-cache";
-import type { ScreenshotFeed, PlayerScreenshot } from "@/lib/screenshots";
+import { emptyScreenshotFeed, type ScreenshotFeed, type PlayerScreenshot } from "@/lib/screenshots";
 import { formatZagrebTime } from "@/lib/time";
 
-const CACHE_KEY = "gizmocraft:last-screenshot-feed";
 const POLL_MS = 5_000;
 const INITIAL_VISIBLE_SCREENSHOTS = 3;
 const LOAD_MORE_SCREENSHOTS = 3;
@@ -35,7 +33,7 @@ function formatBytes(bytes: number) {
 }
 
 export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotFeed }) {
-  const [feed, setFeed] = useState(initialFeed);
+  const [feed, setFeed] = useState<ScreenshotFeed>(initialFeed.live ? initialFeed : emptyScreenshotFeed(initialFeed.error));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(initialFeed.error ?? null);
   const [uploadPlayer, setUploadPlayer] = useState("");
@@ -46,13 +44,7 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
   const [selectedShot, setSelectedShot] = useState<PlayerScreenshot | null>(null);
 
   useEffect(() => {
-    if (initialFeed.live) {
-      setFeed(initialFeed);
-      writeClientCache(CACHE_KEY, initialFeed);
-      return;
-    }
-    const cached = readClientCache<ScreenshotFeed>(CACHE_KEY);
-    if (cached) setFeed({ ...cached, live: false, note: initialFeed.note ?? "Showing the last loaded screenshot feed while live refresh reconnects." });
+    setFeed(initialFeed.live ? initialFeed : emptyScreenshotFeed(initialFeed.error));
   }, [initialFeed]);
 
   useEffect(() => {
@@ -66,7 +58,6 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
         if (!cancelled) {
           setFeed(body);
           setError(null);
-          writeClientCache(CACHE_KEY, body);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Screenshot refresh failed");
@@ -136,7 +127,6 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
       if (next.ok) {
         const nextFeed = await next.json();
         setFeed(nextFeed);
-        writeClientCache(CACHE_KEY, nextFeed);
       }
     } catch (err) {
       setUploadStatus(err instanceof Error ? err.message : "Screenshot upload failed");
@@ -159,7 +149,7 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
           <div className={`rounded-2xl border px-5 py-4 ${feed.live ? "border-lime-300/30 bg-lime-300/10" : "border-amber-300/30 bg-amber-300/10"}`}>
             <div className="flex items-center gap-2">
               <Radio className={`h-4 w-4 ${refreshing ? "animate-pulse" : ""}`} />
-              <p className={feed.live ? "text-sm font-bold text-lime-100" : "text-sm font-bold text-amber-100"}>{feed.live ? "Live polling" : "Last loaded"}</p>
+              <p className={feed.live ? "text-sm font-bold text-lime-100" : "text-sm font-bold text-amber-100"}>{feed.live ? "Live polling" : "Waiting for screenshots"}</p>
             </div>
             <p className="mt-1 text-xs text-slate-300">Checked {formatZagrebTime(feed.checkedAt)}</p>
           </div>
@@ -231,7 +221,7 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
       <section className="grid gap-4 md:grid-cols-3">
         <StatCard icon={<Camera className="h-5 w-5" />} label="Screenshots" value={String(feed.count)} detail="Newest first" />
         <StatCard icon={<UploadCloud className="h-5 w-5" />} label="Players seen" value={String(players)} detail="Parsed from upload/player names" />
-        <StatCard icon={<RefreshCw className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`} />} label="Refresh" value="3 sec" detail="No page reload needed" />
+        <StatCard icon={<RefreshCw className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`} />} label="Auto polling" value="5 sec" detail="No page reload needed" />
       </section>
 
       {newest ? (

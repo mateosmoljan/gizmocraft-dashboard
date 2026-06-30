@@ -22,7 +22,7 @@ test("sidebar preserves the all-time Google user total across refreshes", () => 
   assert.match(shellSource, /APP_STATS_TOTAL_CACHE_KEY = "gizmocraft:max-google-users-total"/);
   assert.match(shellSource, /Math\.max\(previousTotal, Number\(stats\.totalSignedIn \?\? 0\)\)/);
   assert.match(shellSource, /method: "POST"/);
-  assert.match(shellSource, /Showing saved Google total; live activity unavailable/);
+  assert.match(shellSource, /ShellDataSkeleton/);
 });
 
 test("sidebar preserves last active count during refresh heartbeat", () => {
