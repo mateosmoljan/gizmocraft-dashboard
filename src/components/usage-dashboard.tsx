@@ -4,7 +4,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { ServerUsageData, ServerUsageMetric } from "@/lib/server-usage";
 import type { ChunkSettings } from "@/lib/server-settings";
 import { formatZagrebTime } from "@/lib/time";
-import { DataExplainButton } from "@/components/data-explain-button";
 
 const LIVE_REFRESH_MS = 30_000;
 const USAGE_PLACEHOLDERS: ServerUsageMetric[] = [
@@ -219,31 +218,13 @@ function UsageSkeleton({ className = "h-6 w-24" }: { className?: string }) {
   return <span className={`block animate-pulse rounded-lg bg-emerald-200/15 ${className}`} aria-label="Refreshing data" />;
 }
 
-function explainUsageMetric(metric: ServerUsageMetric) {
-  const details: Record<string, string> = {
-    CPU: "Server CPU pressure. High sustained CPU can make Minecraft ticks and player actions feel delayed.",
-    RAM: "Machine memory usage. High RAM pressure can cause slowdowns or swapping.",
-    Disk: "Storage usage and pressure. Watch this during saves, chunk loads, backups, or screenshots.",
-    Network: "Network throughput/latency signal from the server bridge. Useful for separating Wi‑Fi lag from server lag.",
-    "Active Minecraft players": "Live Minecraft player count from the server status/bridge, not dashboard visitors.",
-    "View distance": "How many chunks each player can see around them. Higher values load much more world data.",
-    "Simulation distance": "How many chunks keep ticking entities, farms, redstone, and mobs around each player.",
-    "Max players": "The server.properties max player limit and port context.",
-    "Apply status": "Whether the saved chunk settings are active or need a Minecraft restart/reload.",
-  };
-  return details[metric.label] ?? metric.detail ?? `${metric.label} telemetry from the live server bridge.`;
-}
-
 function UsageCard({ metric, refreshing }: { metric: ServerUsageMetric; refreshing: boolean }) {
   const percent = metric.percent ?? null;
   return (
     <article className="rounded-3xl border border-white/10 bg-white/8 p-5 backdrop-blur">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-sm text-slate-400">{metric.label}</p>
-            <DataExplainButton label={metric.label} explanation={explainUsageMetric(metric)} />
-          </div>
+          <p className="text-sm text-slate-400">{metric.label}</p>
           {refreshing ? <UsageSkeleton className="mt-3 h-9 w-28" /> : <p className="mt-2 text-3xl font-black text-white">{metric.value}</p>}
         </div>
         {refreshing ? <UsageSkeleton className="h-7 w-14 rounded-full" /> : percent != null ? <span className="rounded-full bg-emerald-300/15 px-3 py-1 text-sm text-emerald-100">{Math.round(percent)}%</span> : null}

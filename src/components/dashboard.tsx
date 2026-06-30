@@ -5,7 +5,6 @@ import { boards as boardDefinitions } from "@/lib/sample-data";
 import type { DashboardData, DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
 import { formatPlaytimeHours } from "@/lib/playtime";
 import { DashboardProfileSummary } from "@/components/dashboard-profile-summary";
-import { DataExplainButton } from "@/components/data-explain-button";
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
@@ -26,35 +25,6 @@ function formatBoardValue(value: number, suffix: string, field?: keyof Dashboard
   if (field === "playHours") return formatPlaytimeHours(value);
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(2));
   return `${format(rounded)} ${suffix}`;
-}
-
-const statExplanations: Record<string, string> = {
-  Online: "Current Minecraft server player count from the live bridge when it is reachable.",
-  "Top score": "Highest current GizmoCraft score among tracked players, based on the dashboard score formula.",
-  "Last database sync": "When the laptop bridge last loaded fresh Minecraft world/player data into the dashboard database.",
-  "Website fetch": "How long ago this browser sent a no-cache request to the dashboard API.",
-  Score: "Combined activity score used to rank players across mining, mobs, travel, crafting, and survival stats.",
-  Diamonds: "Diamond ore mined by this player from Minecraft stats.",
-  "Mobs killed": "Total hostile/passive mobs killed by this player from Minecraft stats.",
-  "Total playtime": "Total time this player has spent in the world, converted from Minecraft play ticks.",
-  Playtime: "Total time this player has spent in the world, converted from Minecraft play ticks.",
-  Deaths: "Number of times this player has died in the world.",
-  Mined: "Total blocks mined by this player across tracked Minecraft stats.",
-  Mobs: "Total mobs killed by this player from Minecraft stats.",
-  Distance: "Approximate distance traveled by this player, converted from Minecraft centimeters to kilometers.",
-  Placed: "Total blocks placed by this player.",
-  Crafted: "Total items crafted by this player.",
-  Food: "Total food items eaten by this player.",
-  "Damage taken": "Total damage this player has taken, as reported by Minecraft stats.",
-  Loading: "This data slot is waiting for the next dashboard refresh.",
-};
-
-function explainStat(label: string) {
-  return statExplanations[label] ?? `Explanation for ${label}.`;
-}
-
-function boardExplanation(title: string, metric: string) {
-  return `${title} ranks tracked players by ${metric}. The podium updates automatically from the latest database response.`;
 }
 
 type BoardDefinition = typeof boardDefinitions[number];
@@ -174,18 +144,18 @@ function Hero({ worldStats, live, view, loading, failed, lastFetchedLabel }: { w
 function OverviewSection({ players, worldStats, live, loading, lastFetchedLabel }: { players: DashboardPlayer[]; worldStats: DashboardWorld | null; live: boolean; loading: boolean; lastFetchedLabel: string }) {
   const top = players[0] ?? null;
   const statCards = [
-    ["Online", !loading && worldStats ? live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable" : null, explainStat("Online")],
-    ["Top score", top ? format(top.score) : null, explainStat("Top score")],
-    ["Last database sync", !loading && worldStats ? worldStats.lastSync : null, "When the laptop bridge last loaded fresh Minecraft world/player data into the dashboard database."],
-    ["Website fetch", loading ? null : lastFetchedLabel, "How long ago this browser sent a no-cache request to the dashboard API."],
+    ["Online", !loading && worldStats ? live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable" : null],
+    ["Top score", top ? format(top.score) : null],
+    ["Last database sync", !loading && worldStats ? worldStats.lastSync : null],
+    ["Website fetch", loading ? null : lastFetchedLabel],
   ] as const;
 
   return (
     <>
       <div className="grid gap-4 md:grid-cols-4">
-        {statCards.map(([k, v, explanation]) => (
+        {statCards.map(([k, v]) => (
           <div key={k} className="rounded-2xl border border-white/10 bg-white/8 p-5 backdrop-blur">
-            <div className="flex items-start justify-between gap-3"><p className="text-sm text-slate-400">{k}</p><DataExplainButton label={k} explanation={explanation} /></div>
+            <p className="text-sm text-slate-400">{k}</p>
             {loading ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v ?? "No data"}</p>}
           </div>
         ))}
@@ -195,7 +165,7 @@ function OverviewSection({ players, worldStats, live, loading, lastFetchedLabel 
           <p className="text-sm uppercase tracking-[0.3em] text-emerald-200/70">Current king</p>
           {loading ? <DataSkeleton className="mt-3 h-12 w-60" /> : top ? <h2 className="mt-2 text-4xl font-black">{top.avatar} {top.name}</h2> : <h2 className="mt-2 text-2xl font-black text-slate-300">No player data loaded yet</h2>}
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Stat label="Score" value={!loading && top ? format(top.score) : null} loading={loading} explanation={explainStat("Score")} />
+            <Stat label="Score" value={!loading && top ? format(top.score) : null} loading={loading} />
             <Stat label="Diamonds" value={!loading && top ? String(top.diamonds) : null} loading={loading} />
             <Stat label="Mobs killed" value={!loading && top ? format(top.mobsKilled) : null} loading={loading} />
             <Stat label="Total playtime" value={!loading && top ? formatPlaytimeHours(top.playHours) : null} loading={loading} />
@@ -294,7 +264,6 @@ function BoardsSection({ players, boards, loading }: { players: DashboardPlayer[
               <div className="relative">
                 <div className="flex items-center justify-between gap-3">
                   <span className={`rounded-full border px-3 py-1 text-xs font-black ${tone.pill}`}>#{index + 1} featured</span>
-                  <DataExplainButton label={board.title} explanation={boardExplanation(board.title, board.metric)} />
                 </div>
                 <p className="mt-4 text-sm font-bold text-slate-300">{board.category} · {board.metric}</p>
                 <h3 className="mt-1 text-2xl font-black text-white">{board.title}</h3>
@@ -329,7 +298,6 @@ function BoardCard({ board, players, loading }: { board: BoardDefinition; player
           </div>
           <h3 className="mt-3 text-2xl font-black tracking-tight text-white">{board.title}</h3>
         </div>
-        <DataExplainButton label={board.title} explanation={boardExplanation(board.title, board.metric)} />
       </div>
 
       <div className="grid gap-4 p-4 md:grid-cols-[0.9fr_1.1fr]">
@@ -362,10 +330,10 @@ function BoardRowSkeleton() {
 }
 
 
-function Stat({ label, value, loading = false, explanation = explainStat(label) }: { label: string; value: string | null; loading?: boolean; explanation?: string }) {
+function Stat({ label, value, loading = false }: { label: string; value: string | null; loading?: boolean }) {
   return (
     <div className="rounded-xl bg-black/25 p-3">
-      <div className="flex items-start justify-between gap-3"><p className="text-slate-400">{label}</p><DataExplainButton label={label} explanation={explanation} /></div>
+      <p className="text-slate-400">{label}</p>
       {loading ? <DataSkeleton className="mt-2 h-5 w-20" /> : <p className="mt-1 font-bold text-white">{value ?? "No data"}</p>}
     </div>
   );
