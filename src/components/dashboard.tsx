@@ -337,10 +337,6 @@ function BoardCard({ board, players, loading }: { board: BoardDefinition; player
           <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Current leader</p>
           {loading ? <DataSkeleton className="mt-4 h-9 w-36" /> : winner ? <p className="mt-3 truncate text-3xl font-black text-white">{winner.avatar} {winner.name}</p> : <p className="mt-3 text-sm font-bold text-slate-300">No player data loaded yet</p>}
           {loading ? <DataSkeleton className="mt-3 h-5 w-44" /> : winner ? <p className="mt-2 text-sm font-bold text-slate-300">{formatBoardValue(Number(winner[board.field]), board.suffix, board.field)}</p> : <p className="mt-2 text-sm text-slate-500">Waiting for live bridge data.</p>}
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-            <MiniMetric label="Players" value={loading ? null : String(players.length)} loading={loading} />
-            <MiniMetric label="Sort" value={("ascending" in board && board.ascending) ? "Low wins" : "High wins"} loading={false} />
-          </div>
         </div>
 
         <div className="space-y-2">
@@ -359,10 +355,6 @@ function BoardCard({ board, players, loading }: { board: BoardDefinition; player
       </div>
     </article>
   );
-}
-
-function MiniMetric({ label, value, loading }: { label: string; value: string | null; loading: boolean }) {
-  return <div className="rounded-xl bg-black/30 p-3"><p className="text-slate-500">{label}</p>{loading ? <DataSkeleton className="mt-2 h-4 w-10" /> : <p className="mt-1 font-black text-white">{value}</p>}</div>;
 }
 
 function BoardRowSkeleton() {

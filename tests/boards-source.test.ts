@@ -35,7 +35,9 @@ test("leaderboard UI uses featured cards, category chips, top-three rows, and no
   assert.match(source, /function BoardCard/);
   assert.match(source, /Current leader/);
   assert.match(source, /Top 3/);
-  assert.match(source, /Low wins/);
-  assert.match(source, /High wins/);
+  assert.doesNotMatch(source, /MiniMetric/);
+  assert.doesNotMatch(source, /label="Players"/);
+  assert.doesNotMatch(source, /label="Sort"/);
+  assert.doesNotMatch(source, /Low wins|High wins/);
   assert.doesNotMatch(source, /Refresh data|Refresh now|Showing last loaded/);
 });
