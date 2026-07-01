@@ -48,7 +48,6 @@ function rankBoard(players: DashboardPlayer[], board: BoardDefinition) {
 
 export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView }) {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [failed, setFailed] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const refreshInFlight = useRef(false);
@@ -64,9 +63,8 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
       const fetchedAt = Date.now();
       setLastFetchedAt(fetchedAt);
       setNow(fetchedAt);
-      setFailed(false);
     } catch {
-      setFailed(true);
+      // Keep existing value-level skeletons/empty states visible until the next automatic retry succeeds.
     } finally {
       refreshInFlight.current = false;
     }
@@ -99,7 +97,6 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
 
   return (
     <div className="space-y-6">
-      <Hero worldStats={currentWorldStats} live={Boolean(data?.live)} view={view} loading={loading} failed={failed} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} />
       {view === "overview" ? <DashboardProfileSummary /> : null}
       {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data?.live)} loading={loading} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} /> : null}
       {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data?.live)} loading={loading} /> : null}
@@ -110,35 +107,6 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
 
 function DataSkeleton({ className = "h-6 w-24" }: { className?: string }) {
   return <span className={`block animate-pulse rounded-lg bg-emerald-200/15 ${className}`} aria-label="Loading data" />;
-}
-
-function Hero({ worldStats, live, view, loading, failed, lastFetchedLabel }: { worldStats: DashboardWorld | null; live: boolean; view: DashboardView; loading: boolean; failed: boolean; lastFetchedLabel: string }) {
-  const titles = {
-    overview: ["Minecraft Overview", "The clean world snapshot: online state, top score, last sync, and quick links."],
-    players: ["Player cards", "One page for tracked players, profiles, and the stats Mateo will roast later."],
-    boards: ["Rivalry boards", "Public leaderboards, shame boards, and podiums for everyone to compare."],
-  } as const;
-  const [title, subtitle] = titles[view];
-  return (
-    <header className="flex flex-col gap-4 rounded-3xl border border-emerald-300/20 bg-white/8 p-6 shadow-2xl shadow-black/30 backdrop-blur md:flex-row md:items-end md:justify-between">
-      <div>
-        <p className="text-sm uppercase tracking-[0.35em] text-emerald-200/80">GizmoCraft Command</p>
-        <h1 className="mt-2 text-4xl font-black tracking-tight text-white md:text-6xl">{title}</h1>
-        <p className="mt-3 max-w-2xl text-base text-slate-300">{subtitle}</p>
-        <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold">
-          <a className="rounded-full bg-emerald-300 px-4 py-2 text-slate-950" href="/players">Player cards</a>
-          <a className="rounded-full border border-emerald-300/30 px-4 py-2 text-emerald-100" href="/leaderboards">Rivalry boards</a>
-          <a className="rounded-full border border-emerald-300/30 px-4 py-2 text-emerald-100" href="/profile">Edit profile</a>
-        </div>
-      </div>
-      <div className="min-w-56 rounded-2xl border border-lime-300/30 bg-lime-300/10 px-5 py-4 text-right">
-        <p className="text-sm text-lime-200">{loading ? failed ? "Waiting for database" : "Fetching database" : live ? "Live bridge data" : "Database pending"}</p>
-        {loading || !worldStats ? <DataSkeleton className="ml-auto mt-2 h-7 w-36" /> : <p className="text-xl font-bold">{worldStats.name}</p>}
-        {loading || !worldStats ? <DataSkeleton className="ml-auto mt-2 h-4 w-44" /> : <p className="text-sm text-slate-300">{worldStats.difficulty} · {worldStats.trackedPlayers} players tracked</p>}
-        <p className="mt-2 text-xs text-lime-100/80">Auto-refreshes every 30s while open · fetched {lastFetchedLabel}</p>
-      </div>
-    </header>
-  );
 }
 
 function OverviewSection({ players, worldStats, live, loading, lastFetchedLabel }: { players: DashboardPlayer[]; worldStats: DashboardWorld | null; live: boolean; loading: boolean; lastFetchedLabel: string }) {
