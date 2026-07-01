@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatPlaytimeMs } from "@/lib/playtime";
 
 type ProfileResponse = {
   profile: {
@@ -11,13 +10,6 @@ type ProfileResponse = {
     email?: string | null;
     minecraftUuid?: string | null;
     player?: { uuid?: string | null; name?: string | null; totalPlayMs?: number | bigint | string | null; online?: boolean | null } | null;
-  };
-  ownership?: {
-    linked: boolean;
-    source: "known-email" | "profile" | "unlinked";
-    username?: string;
-    minecraftUuid?: string;
-    minecraftName?: string;
   };
 };
 
@@ -49,9 +41,8 @@ export function DashboardProfileSummary() {
 
   if (!payload?.profile) return null;
 
-  const { profile, ownership } = payload;
-  const playerName = profile.player?.name ?? ownership?.minecraftName ?? null;
-  const linked = Boolean(profile.minecraftUuid || profile.player?.uuid || ownership?.linked);
+  const { profile } = payload;
+  const playerName = profile.player?.name ?? null;
   const avatar = profile.image;
 
   return (
@@ -65,21 +56,12 @@ export function DashboardProfileSummary() {
             <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">Your signed-in profile</p>
             <h2 className="mt-1 truncate text-2xl font-black">{profile.name || profile.email || profile.username}</h2>
             <p className="mt-1 text-sm text-slate-300">
-              @{profile.username} · {linked ? `owns ${playerName ?? "linked Minecraft player"}` : "Minecraft player not linked yet"}
+              @{profile.username}{playerName ? ` · Minecraft: ${playerName}` : ""}
             </p>
           </div>
         </div>
 
-        <div className="grid gap-2 text-sm md:min-w-72">
-          <div className={`rounded-2xl border px-4 py-3 ${linked ? "border-lime-300/25 bg-lime-300/10" : "border-amber-300/25 bg-amber-300/10"}`}>
-            <p className={linked ? "font-black text-lime-100" : "font-black text-amber-100"}>{linked ? "Google ownership mapped" : "Needs ownership mapping"}</p>
-            <p className="mt-1 text-xs text-slate-400">
-              {linked ? (ownership?.source === "known-email" ? "Matched by the approved Google email mapping." : "Matched from your saved profile link.") : "Ask Mateo to attach your Google email to your Minecraft username."}
-            </p>
-          </div>
-          {profile.player?.totalPlayMs != null ? <p className="rounded-xl bg-emerald-300/10 px-3 py-2 font-bold text-emerald-100">Minecraft playtime: {formatPlaytimeMs(profile.player.totalPlayMs)}</p> : null}
-          {failed ? <p className="text-xs text-amber-200">Waiting for live profile data.</p> : null}
-        </div>
+        {failed ? <p className="text-xs text-amber-200">Waiting for live profile data.</p> : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold">
