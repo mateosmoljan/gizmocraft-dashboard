@@ -372,6 +372,8 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
         <p className="mt-3 text-xs text-cyan-100/75">Version {GIZMOCRAFT_WORLD_SYNC_MODPACK.version} · {GIZMOCRAFT_WORLD_SYNC_MODPACK.status}</p>
       </section>
 
+      {failed && loading ? <MapRetryPanel refreshing={refreshing} onRetry={() => void refresh(true)} /> : null}
+
       <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
         <GlobeScene data={displayData} />
         <aside className="space-y-4">
@@ -411,6 +413,19 @@ export function WorldMapDashboard({ initialData = emptyMap }: { initialData?: Wo
 
 function MapSkeleton({ className = "h-6 w-24" }: { className?: string }) {
   return <span className={`block animate-pulse rounded-lg bg-cyan-200/15 ${className}`} aria-label="Loading data" />;
+}
+
+function MapRetryPanel({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) {
+  return (
+    <section className="mx-auto flex min-h-56 max-w-xl flex-col items-center justify-center rounded-3xl border border-amber-300/25 bg-amber-300/8 p-8 text-center">
+      <p className="text-sm font-black uppercase tracking-[0.28em] text-amber-100/80">Database timeout</p>
+      <h2 className="mt-2 text-2xl font-black text-white">Map data did not load</h2>
+      <p className="mt-2 text-sm text-slate-300">Automatic retry is still running. You can also refresh this data now.</p>
+      <button type="button" onClick={onRetry} disabled={refreshing} className="mt-5 rounded-full bg-amber-300 px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-amber-200 disabled:cursor-wait disabled:opacity-70">
+        {refreshing ? "Retrying…" : "Refresh data"}
+      </button>
+    </section>
+  );
 }
 
 function Stat({ label, value, loading = false }: { label: string; value: string; loading?: boolean }) {

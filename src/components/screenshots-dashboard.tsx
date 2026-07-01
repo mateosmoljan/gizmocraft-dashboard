@@ -100,6 +100,21 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
   const helperUrl = `/api/screenshots/sync-helper?player=${encodeURIComponent(helperPlayer)}`;
   const helperCommand = `powershell -ExecutionPolicy Bypass -File .\\gizmocraft-screenshot-sync-${helperPlayer}.ps1`;
 
+  async function refreshFeedNow() {
+    setRefreshing(true);
+    try {
+      const res = await fetch(`/api/screenshots?ts=${Date.now()}`, { cache: "no-store" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `screenshots returned ${res.status}`);
+      setFeed(body);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Screenshot refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function submitUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUploadStatus(null);
@@ -156,13 +171,7 @@ export function ScreenshotsDashboard({ initialFeed }: { initialFeed: ScreenshotF
         </div>
       </section>
 
-      {error || feed.note ? (
-        <section className="rounded-3xl border border-amber-300/20 bg-amber-300/8 p-5 text-amber-100">
-          <p className="font-bold">Screenshot feed status</p>
-          {feed.note ? <p className="mt-2 text-sm text-amber-100/80">{feed.note}</p> : null}
-          {error ? <p className="mt-2 text-sm text-amber-100/80">{error}</p> : null}
-        </section>
-      ) : null}
+      {(error || feed.note) && !feed.screenshots.length ? <ScreenshotRetryPanel refreshing={refreshing} onRetry={() => void refreshFeedNow()} /> : null}
 
       <section className="rounded-3xl border border-emerald-300/20 bg-emerald-300/8 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -440,6 +449,17 @@ function OptimizedScreenshot({
       className={className}
       onLoad={onLoad}
     />
+  );
+}
+
+function ScreenshotRetryPanel({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) {
+  return (
+    <section className="mx-auto flex min-h-56 max-w-xl flex-col items-center justify-center rounded-3xl border border-amber-300/25 bg-amber-300/8 p-8 text-center text-amber-100">
+      <p className="text-sm font-black uppercase tracking-[0.28em] text-amber-100/80">Database timeout</p>
+      <h2 className="mt-2 text-2xl font-black text-white">Screenshots did not load</h2>
+      <p className="mt-2 text-sm text-slate-300">Automatic retry is still running. You can also refresh now.</p>
+      <button type="button" onClick={onRetry} disabled={refreshing} className="mt-5 rounded-full bg-amber-300 px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-amber-200 disabled:cursor-wait disabled:opacity-70">{refreshing ? "Retrying…" : "Refresh data"}</button>
+    </section>
   );
 }
 

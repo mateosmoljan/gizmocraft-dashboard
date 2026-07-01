@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatPlaytimeHours, formatPlaytimeMs } from "@/lib/playtime";
 
 type PublicProfile = {
@@ -27,27 +27,22 @@ export function PublicProfiles() {
 
   const profiles = useMemo(() => payload?.profiles ?? [], [payload]);
 
+  const loadProfiles = useCallback(async (showBusy = false) => {
+    if (showBusy) setLoading(true);
+    try {
+      const res = await fetch("/api/profiles", { cache: "no-store" });
+      if (!res.ok) throw new Error(`profiles ${res.status}`);
+      const next = { ...(await res.json()), fetchedAt: Date.now() } as ProfilesPayload;
+      setPayload(next);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    let cancelled = false;
-
-    const loadProfiles = async () => {
-      try {
-        const res = await fetch("/api/profiles", { cache: "no-store" });
-        if (!res.ok) throw new Error(`profiles ${res.status}`);
-        const next = { ...(await res.json()), fetchedAt: Date.now() } as ProfilesPayload;
-        if (!cancelled) {
-          setPayload(next);
-          setFailed(false);
-        }
-      } catch {
-        if (!cancelled) setFailed(true);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
     void loadProfiles();
 
     const interval = window.setInterval(() => {
@@ -59,12 +54,11 @@ export function PublicProfiles() {
     document.addEventListener("visibilitychange", refreshOnFocus);
 
     return () => {
-      cancelled = true;
       window.clearInterval(interval);
       window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshOnFocus);
     };
-  }, []);
+  }, [loadProfiles]);
 
   return (
     <section>
@@ -80,6 +74,8 @@ export function PublicProfiles() {
         </div>
       </div>
 
+      {failed && !profiles.length && !loading ? <ProfilesRetryPanel onRetry={() => void loadProfiles(true)} /> : null}
+
       {profiles.length ? (
         <div className="grid gap-4 md:grid-cols-3">
           {profiles.map((p) => <ProfileCard key={p.id} profile={p} />)}
@@ -89,7 +85,7 @@ export function PublicProfiles() {
           {[0, 1, 2].map((index) => <ProfileCardSkeleton key={index} />)}
         </div>
       ) : (
-        <div className="rounded-3xl border border-white/10 bg-white/8 p-8 text-slate-300">No public profiles yet. Profiles appear after players sign in with Google.</div>
+        failed ? null : <div className="rounded-3xl border border-white/10 bg-white/8 p-8 text-slate-300">No public profiles yet. Profiles appear after players sign in with Google.</div>
       )}
     </section>
   );
@@ -125,6 +121,17 @@ function ProfileCardSkeleton() {
       <span className="mt-4 block h-6 w-32 animate-pulse rounded-lg bg-emerald-200/15" />
       <span className="mt-3 block h-4 w-44 animate-pulse rounded-lg bg-emerald-200/15" />
       <span className="mt-3 block h-4 w-28 animate-pulse rounded-lg bg-emerald-200/15" />
+    </div>
+  );
+}
+
+function ProfilesRetryPanel({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mx-auto mb-6 flex min-h-56 max-w-xl flex-col items-center justify-center rounded-3xl border border-amber-300/25 bg-amber-300/8 p-8 text-center">
+      <p className="text-sm font-black uppercase tracking-[0.28em] text-amber-100/80">Database timeout</p>
+      <h2 className="mt-2 text-2xl font-black text-white">Profiles did not load</h2>
+      <p className="mt-2 text-sm text-slate-300">Automatic retry is still running. You can also refresh now.</p>
+      <button type="button" onClick={onRetry} className="mt-5 rounded-full bg-amber-300 px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-amber-200">Refresh data</button>
     </div>
   );
 }

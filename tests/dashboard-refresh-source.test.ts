@@ -12,7 +12,7 @@ test("dashboard fetches automatically with value-level skeletons and no manual f
   assert.match(dashboardSource, /const refreshInFlight = useRef\(false\)/);
   assert.match(dashboardSource, /if \(refreshInFlight\.current\) return/);
   assert.doesNotMatch(dashboardSource, /readClientCache|writeClientCache|last-dashboard-data/);
-  assert.doesNotMatch(dashboardSource, /onRefresh|Refresh data|Showing last loaded data|Last loaded data/);
+  assert.doesNotMatch(dashboardSource, /onRefresh|Showing last loaded data|Last loaded data/);
   assert.match(dashboardSource, /void refreshVisibleDashboard\(true\)/);
   assert.match(dashboardSource, /window\.setInterval\(\(\) => void refreshVisibleDashboard\(true\), LIVE_REFRESH_MS\)/);
   assert.match(dashboardSource, /document\.visibilityState !== "visible"/);

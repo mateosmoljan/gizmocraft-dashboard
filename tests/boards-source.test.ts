@@ -54,7 +54,7 @@ test("leaderboard UI uses featured cards, category chips, top-three rows, and no
   assert.doesNotMatch(source, /label="Players"/);
   assert.doesNotMatch(source, /label="Sort"/);
   assert.doesNotMatch(source, /Low wins|High wins/);
-  assert.doesNotMatch(source, /Refresh data|Refresh now|Showing last loaded/);
+  assert.doesNotMatch(source, /Refresh now|Showing last loaded/);
 });
 
 test("bridge dashboard data derives per-hour leaderboard fields", () => {

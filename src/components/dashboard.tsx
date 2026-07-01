@@ -48,13 +48,16 @@ function rankBoard(players: DashboardPlayer[], board: BoardDefinition) {
 
 export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView }) {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const refreshInFlight = useRef(false);
 
-  async function refresh(syncBridge = true) {
+  async function refresh(syncBridge = true, showBusy = false) {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
+    if (showBusy) setRetrying(true);
     try {
       const res = await fetch(`/api/dashboard?ts=${Date.now()}${syncBridge ? "&refresh=1" : ""}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Dashboard data failed: ${res.status}`);
@@ -63,10 +66,12 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
       const fetchedAt = Date.now();
       setLastFetchedAt(fetchedAt);
       setNow(fetchedAt);
+      setFailed(false);
     } catch {
-      // Keep existing value-level skeletons/empty states visible until the next automatic retry succeeds.
+      setFailed(true);
     } finally {
       refreshInFlight.current = false;
+      if (showBusy) setRetrying(false);
     }
   }
 
@@ -94,9 +99,11 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   const currentPlayers = data?.players ?? [];
   const currentWorldStats = data?.worldStats ?? null;
   const currentBoards = data?.boards ?? boardDefinitions;
+  const showRetry = failed && data === null;
 
   return (
     <div className="space-y-6">
+      {showRetry ? <DataLoadRetry retrying={retrying} onRetry={() => void refresh(true, true)} /> : null}
       {view === "overview" ? <DashboardProfileSummary /> : null}
       {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data?.live)} loading={loading} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} /> : null}
       {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data?.live)} loading={loading} /> : null}
@@ -107,6 +114,19 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
 
 function DataSkeleton({ className = "h-6 w-24" }: { className?: string }) {
   return <span className={`block animate-pulse rounded-lg bg-emerald-200/15 ${className}`} aria-label="Loading data" />;
+}
+
+function DataLoadRetry({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
+  return (
+    <section className="mx-auto flex min-h-56 max-w-xl flex-col items-center justify-center rounded-3xl border border-amber-300/25 bg-amber-300/8 p-8 text-center shadow-2xl shadow-black/20">
+      <p className="text-sm font-black uppercase tracking-[0.28em] text-amber-100/80">Database timeout</p>
+      <h2 className="mt-2 text-2xl font-black text-white">Data did not load</h2>
+      <p className="mt-2 text-sm text-slate-300">The website will keep retrying automatically. You can also retry now.</p>
+      <button type="button" onClick={onRetry} disabled={retrying} className="mt-5 rounded-full bg-amber-300 px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-amber-200 disabled:cursor-wait disabled:opacity-70">
+        {retrying ? "Retrying…" : "Refresh data"}
+      </button>
+    </section>
+  );
 }
 
 function OverviewSection({ players, worldStats, live, loading, lastFetchedLabel }: { players: DashboardPlayer[]; worldStats: DashboardWorld | null; live: boolean; loading: boolean; lastFetchedLabel: string }) {

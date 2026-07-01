@@ -134,13 +134,7 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
         </div>
       </section>
 
-      {usage.note || error ? (
-        <section className="rounded-3xl border border-amber-300/20 bg-amber-300/8 p-5 text-amber-100">
-          <p className="font-bold">Usage data is not live yet.</p>
-          {usage.note ? <p className="mt-2 text-sm text-amber-100/80">{usage.note}</p> : null}
-          {error ? <p className="mt-2 text-sm text-amber-100/80">{error}</p> : null}
-        </section>
-      ) : null}
+      {usageLoading && (usage.note || error) ? <UsageRetryPanel refreshing={refreshing} onRetry={() => void refreshUsage(true)} /> : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {usageMetrics.map((entry) => <UsageCard key={entry.label} metric={entry} refreshing={refreshing || usageLoading} />)}
@@ -216,6 +210,19 @@ export function UsageDashboard({ initialUsage, initialChunkSettings }: { initial
 
 function UsageSkeleton({ className = "h-6 w-24" }: { className?: string }) {
   return <span className={`block animate-pulse rounded-lg bg-emerald-200/15 ${className}`} aria-label="Refreshing data" />;
+}
+
+function UsageRetryPanel({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) {
+  return (
+    <section className="mx-auto flex min-h-56 max-w-xl flex-col items-center justify-center rounded-3xl border border-amber-300/25 bg-amber-300/8 p-8 text-center text-amber-100">
+      <p className="text-sm font-black uppercase tracking-[0.28em] text-amber-100/80">Database timeout</p>
+      <h2 className="mt-2 text-2xl font-black text-white">Usage data did not load</h2>
+      <p className="mt-2 text-sm text-slate-300">Automatic retry is still running. Use this if you want to try now.</p>
+      <button type="button" onClick={onRetry} disabled={refreshing} className="mt-5 rounded-full bg-amber-300 px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-amber-200 disabled:cursor-wait disabled:opacity-70">
+        {refreshing ? "Retrying…" : "Refresh data"}
+      </button>
+    </section>
+  );
 }
 
 function UsageCard({ metric, refreshing }: { metric: ServerUsageMetric; refreshing: boolean }) {
