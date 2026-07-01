@@ -2,32 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { boards as boardDefinitions } from "@/lib/sample-data";
-import type { DashboardData, DashboardPlayer, DashboardWorld } from "@/lib/dashboard-data";
+import type { DashboardData, DashboardPlayer, DashboardSession, DashboardWorld } from "@/lib/dashboard-data";
 import { formatPlaytimeHours } from "@/lib/playtime";
-import { DashboardProfileSummary } from "@/components/dashboard-profile-summary";
 
 function format(value: number) { return new Intl.NumberFormat("en").format(value); }
 
 type DashboardView = "overview" | "players" | "boards";
 const LIVE_REFRESH_MS = 30_000;
 
-function formatRelativeRefresh(lastFetchedAt: number | null, now: number) {
-  if (!lastFetchedAt) return "not fetched this session yet";
-  const seconds = Math.max(0, Math.round((now - lastFetchedAt) / 1000));
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return remainingSeconds ? `${minutes}m ${remainingSeconds}s ago` : `${minutes}m ago`;
-}
+type BoardDefinition = typeof boardDefinitions[number];
 
 function formatBoardValue(value: number, suffix: string, field?: keyof DashboardPlayer) {
   if (field === "playHours") return formatPlaytimeHours(value);
   const rounded = Number.isInteger(value) ? value : Number(value.toFixed(2));
   return `${format(rounded)} ${suffix}`;
 }
-
-type BoardDefinition = typeof boardDefinitions[number];
 
 const boardToneClasses: Record<BoardDefinition["tone"], { ring: string; pill: string; glow: string; bar: string }> = {
   emerald: { ring: "border-emerald-300/20 bg-emerald-300/8", pill: "bg-emerald-300/12 text-emerald-100 border-emerald-300/25", glow: "from-emerald-300/18", bar: "bg-emerald-300" },
@@ -50,8 +39,6 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   const [data, setData] = useState<DashboardData | null>(null);
   const [failed, setFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const refreshInFlight = useRef(false);
 
   async function refresh(syncBridge = true, showBusy = false) {
@@ -63,9 +50,6 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
       if (!res.ok) throw new Error(`Dashboard data failed: ${res.status}`);
       const nextData = await res.json();
       setData(nextData);
-      const fetchedAt = Date.now();
-      setLastFetchedAt(fetchedAt);
-      setNow(fetchedAt);
       setFailed(false);
     } catch {
       setFailed(true);
@@ -83,20 +67,19 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
 
     void refreshVisibleDashboard(true);
     const interval = window.setInterval(() => void refreshVisibleDashboard(true), LIVE_REFRESH_MS);
-    const clock = window.setInterval(() => setNow(Date.now()), 5_000);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") void refreshVisibleDashboard(true);
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.clearInterval(interval);
-      window.clearInterval(clock);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 
   const loading = data === null;
   const currentPlayers = data?.players ?? [];
+  const currentSessions = data?.sessions ?? [];
   const currentWorldStats = data?.worldStats ?? null;
   const currentBoards = data?.boards ?? boardDefinitions;
   const showRetry = failed && data === null;
@@ -104,8 +87,7 @@ export function MinecraftDashboard({ view = "overview" }: { view?: DashboardView
   return (
     <div className="space-y-6">
       {showRetry ? <DataLoadRetry retrying={retrying} onRetry={() => void refresh(true, true)} /> : null}
-      {view === "overview" ? <DashboardProfileSummary /> : null}
-      {view === "overview" ? <OverviewSection players={currentPlayers} worldStats={currentWorldStats} live={Boolean(data?.live)} loading={loading} lastFetchedLabel={formatRelativeRefresh(lastFetchedAt, now)} /> : null}
+      {view === "overview" ? <OverviewSection sessions={currentSessions} worldStats={currentWorldStats} live={Boolean(data?.live)} loading={loading} /> : null}
       {view === "players" ? <PlayersSection players={currentPlayers} live={Boolean(data?.live)} loading={loading} /> : null}
       {view === "boards" ? <BoardsSection players={currentPlayers} boards={currentBoards} loading={loading} /> : null}
     </div>
@@ -129,45 +111,65 @@ function DataLoadRetry({ retrying, onRetry }: { retrying: boolean; onRetry: () =
   );
 }
 
-function OverviewSection({ players, worldStats, live, loading, lastFetchedLabel }: { players: DashboardPlayer[]; worldStats: DashboardWorld | null; live: boolean; loading: boolean; lastFetchedLabel: string }) {
-  const top = players[0] ?? null;
-  const statCards = [
-    ["Online", !loading && worldStats ? live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable" : null],
-    ["Top score", top ? format(top.score) : null],
-    ["Last database sync", !loading && worldStats ? worldStats.lastSync : null],
-    ["Website fetch", loading ? null : lastFetchedLabel],
-  ] as const;
+function formatSessionDuration(durationMs: number) {
+  const totalMinutes = Math.max(0, Math.round(durationMs / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours && minutes) return `${hours}h ${minutes}m`;
+  if (hours) return `${hours}h`;
+  return `${minutes}m`;
+}
+
+function OverviewSection({ sessions, worldStats, live, loading }: { sessions: DashboardSession[]; worldStats: DashboardWorld | null; live: boolean; loading: boolean }) {
+  const onlineLabel = !loading && worldStats ? live ? `${worldStats.playersOnline}/${worldStats.maxPlayers}` : "Live unavailable" : null;
 
   return (
-    <>
-      <div className="grid gap-4 md:grid-cols-4">
-        {statCards.map(([k, v]) => (
-          <div key={k} className="rounded-2xl border border-white/10 bg-white/8 p-5 backdrop-blur">
-            <p className="text-sm text-slate-400">{k}</p>
-            {loading ? <DataSkeleton className="mt-3 h-8 w-24" /> : <p className="mt-2 text-2xl font-black text-white">{v ?? "No data"}</p>}
-          </div>
-        ))}
+    <section className="space-y-5">
+      <div className="rounded-3xl border border-emerald-300/20 bg-emerald-300/8 p-6 shadow-2xl shadow-black/20">
+        <p className="text-sm font-black uppercase tracking-[0.28em] text-emerald-100/75">Online players</p>
+        {loading ? <DataSkeleton className="mt-4 h-12 w-32" /> : <p className="mt-3 text-5xl font-black text-white">{onlineLabel ?? "No data"}</p>}
       </div>
-      <section className="grid gap-5 lg:grid-cols-3">
-        <article className="rounded-3xl border border-white/10 bg-slate-950/60 p-5 lg:col-span-2">
-          <p className="text-sm uppercase tracking-[0.3em] text-emerald-200/70">Current king</p>
-          {loading ? <DataSkeleton className="mt-3 h-12 w-60" /> : top ? <h2 className="mt-2 text-4xl font-black">{top.avatar} {top.name}</h2> : <h2 className="mt-2 text-2xl font-black text-slate-300">No player data loaded yet</h2>}
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Stat label="Score" value={!loading && top ? format(top.score) : null} loading={loading} />
-            <Stat label="Diamonds" value={!loading && top ? String(top.diamonds) : null} loading={loading} />
-            <Stat label="Mobs killed" value={!loading && top ? format(top.mobsKilled) : null} loading={loading} />
-            <Stat label="Total playtime" value={!loading && top ? formatPlaytimeHours(top.playHours) : null} loading={loading} />
-          </div>
-        </article>
-        <article className="rounded-3xl border border-white/10 bg-slate-950/60 p-5">
-          <p className="text-sm uppercase tracking-[0.3em] text-rose-200/70">Quick jump</p>
-          <div className="mt-4 space-y-3">
-            <a className="block rounded-2xl bg-emerald-300/10 px-4 py-3 font-bold text-emerald-100" href="/players">Open player cards →</a>
-            <a className="block rounded-2xl bg-rose-300/10 px-4 py-3 font-bold text-rose-100" href="/leaderboards">Open shame boards →</a>
-          </div>
-        </article>
-      </section>
-    </>
+
+      <article className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 shadow-2xl shadow-black/20">
+        <div className="border-b border-white/10 p-5">
+          <p className="text-sm font-black uppercase tracking-[0.28em] text-emerald-100/75">Last sessions</p>
+          <h2 className="mt-2 text-3xl font-black text-white">Recent Minecraft sessions</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] text-left text-sm">
+            <thead className="bg-white/5 text-xs uppercase tracking-[0.18em] text-slate-400">
+              <tr>
+                <th className="px-5 py-3 font-black">Player</th>
+                <th className="px-5 py-3 font-black">Joined</th>
+                <th className="px-5 py-3 font-black">Left</th>
+                <th className="px-5 py-3 text-right font-black">Duration</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {loading ? Array.from({ length: 5 }).map((_, index) => (
+                <tr key={index}>
+                  <td className="px-5 py-4"><DataSkeleton className="h-5 w-28" /></td>
+                  <td className="px-5 py-4"><DataSkeleton className="h-5 w-40" /></td>
+                  <td className="px-5 py-4"><DataSkeleton className="h-5 w-40" /></td>
+                  <td className="px-5 py-4"><DataSkeleton className="ml-auto h-5 w-16" /></td>
+                </tr>
+              )) : sessions.length ? sessions.map((session) => (
+                <tr key={session.id} className="text-slate-200">
+                  <td className="px-5 py-4 font-black text-white">{session.playerName}</td>
+                  <td className="px-5 py-4 text-slate-300">{session.joinedAt}</td>
+                  <td className="px-5 py-4 text-slate-300">{session.leftAt ?? "Online now"}</td>
+                  <td className="px-5 py-4 text-right font-black text-white">{formatSessionDuration(session.durationMs)}</td>
+                </tr>
+              )) : (
+                <tr>
+                  <td className="px-5 py-6 text-slate-300" colSpan={4}>No session data loaded yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
   );
 }
 

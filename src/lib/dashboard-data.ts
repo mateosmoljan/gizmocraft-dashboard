@@ -3,9 +3,17 @@ import { formatZagrebDateTime } from "@/lib/time";
 
 export type DashboardPlayer = typeof fallbackPlayers[number];
 export type DashboardWorld = typeof fallbackWorldStats;
+export type DashboardSession = {
+  id: string;
+  playerName: string;
+  joinedAt: string;
+  leftAt: string | null;
+  durationMs: number;
+};
 export type DashboardData = {
   players: DashboardPlayer[];
   worldStats: DashboardWorld;
+  sessions: DashboardSession[];
   boards: typeof boards;
   live: boolean;
   error?: string;
@@ -43,11 +51,12 @@ async function syncBridgeStats(bridgeUrl: string) {
 
 function offlineData(error: unknown, allowSampleFallback: boolean): DashboardData {
   if (allowSampleFallback) {
-    return { players: fallbackPlayers, worldStats: fallbackWorldStats, boards, live: false, error: String(error instanceof Error ? error.message : error) };
+    return { players: fallbackPlayers, worldStats: fallbackWorldStats, sessions: [], boards, live: false, error: String(error instanceof Error ? error.message : error) };
   }
 
   return {
     players: [],
+    sessions: [],
     worldStats: {
       ...fallbackWorldStats,
       playersOnline: 0,
@@ -121,6 +130,13 @@ async function readDashboardDataFromBridge({ sync = false }: { sync?: boolean } 
         uptime: data.world?.uptime ?? "live bridge",
         lastSync: data.world?.lastSync ? formatZagrebDateTime(data.world.lastSync) : "live bridge",
       },
+      sessions: (data.sessions ?? []).map((session: any) => ({
+        id: String(session.id ?? `${session.playerName ?? "player"}-${session.joinedAt ?? "session"}`),
+        playerName: String(session.playerName ?? "Unknown player"),
+        joinedAt: session.joinedAt ? formatZagrebDateTime(session.joinedAt) : "unknown",
+        leftAt: session.leftAt ? formatZagrebDateTime(session.leftAt) : null,
+        durationMs: Number(session.durationMs ?? 0),
+      })),
       boards,
       live: true,
     };

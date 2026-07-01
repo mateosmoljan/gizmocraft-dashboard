@@ -20,6 +20,8 @@ test("dashboard fetches automatically with value-level skeletons and no manual f
   assert.match(dashboardSource, /if \(document\.visibilityState === "visible"\) void refreshVisibleDashboard\(true\)/);
   assert.doesNotMatch(dashboardSource, /GizmoCraft Command|Minecraft Overview|Player cards|Rivalry boards|Edit profile/);
   assert.doesNotMatch(dashboardSource, /Auto-refreshes every 30s while open/);
-  assert.match(dashboardSource, /Website fetch/);
-  assert.match(dashboardSource, /Last database sync/);
+  assert.match(dashboardSource, /Online players/);
+  assert.match(dashboardSource, /Last sessions/);
+  assert.match(dashboardSource, /<table className=/);
+  assert.doesNotMatch(dashboardSource, /Website fetch|Last database sync|Top score|Current king/);
 });

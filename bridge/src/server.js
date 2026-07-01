@@ -737,8 +737,18 @@ async function handleLeaderboards(_req, res) {
     FROM players p JOIN player_stat_snapshots s ON s.id=(SELECT MAX(id) FROM player_stat_snapshots WHERE player_uuid=p.uuid)
     ORDER BY s.diamonds_mined DESC, s.blocks_mined DESC`);
   const [syncRows] = await db.query("SELECT finished_at,status FROM sync_runs WHERE status='ok' ORDER BY id DESC LIMIT 1");
+  const [sessionRows] = await db.query(`SELECT ps.id,ps.joined_at,ps.left_at,ps.duration_ms,p.name AS player_name
+    FROM player_sessions ps JOIN players p ON p.uuid=ps.player_uuid
+    ORDER BY ps.joined_at DESC, ps.id DESC LIMIT 12`);
   await db.end();
   const players = rows.map(toPlayer);
+  const sessions = sessionRows.map((session) => ({
+    id: String(session.id),
+    playerName: session.player_name,
+    joinedAt: session.joined_at,
+    leftAt: session.left_at,
+    durationMs: toNumber(session.duration_ms),
+  }));
   const [livePlayers, properties] = await Promise.all([readLivePlayerStatus(), readServerProperties()]);
   res.json({
     world: {
@@ -752,6 +762,7 @@ async function handleLeaderboards(_req, res) {
       lastSync: syncRows[0]?.finished_at ?? null,
     },
     players: players.map((player) => ({ ...player, online: livePlayers.names.includes(player.name) })),
+    sessions,
   });
 }
 app.get("/api/leaderboards", handleLeaderboards);
