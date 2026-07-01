@@ -426,4 +426,4 @@ export async function syncMinecraftStats() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) syncMinecraftStats().then(r=>console.log(JSON.stringify(r,null,2))).catch(e=>{console.error(e); process.exit(1);});
+if (import.meta.url === `file://${process.argv[1]}`) syncMinecraftStats().then(r=>{ console.log(JSON.stringify(r,null,2)); process.exit(0); }).catch(e=>{console.error(e); process.exit(1);});

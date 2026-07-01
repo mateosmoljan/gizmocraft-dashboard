@@ -9,8 +9,8 @@
 - Do **not** apply new features, datapacks, mods, collectors, or live-world dashboard updates to any other world folder unless Mateo explicitly asks to inspect/recover/archive older data.
 - Local WSL `/home/cisco/minecraft-servers/gizmo-ivan` was an old mirror/server and is archived/stopped; do not confuse it with the active `gizmo-server` path.
 - UI deployment target: Vercel public dashboard.
-- Database target: MySQL on `gizmo-server`/laptop server.
-- Public connectivity pattern: Vercel UI calls an authenticated HTTPS bridge/API on `gizmo-server`; the bridge talks to local MySQL and Minecraft files. Do **not** expose raw MySQL publicly.
+- Database target: MySQL on **Piston** (`piston` / `100.120.246.18`), database `gizmocraft_dashboard`.
+- Public connectivity pattern: Vercel UI calls an authenticated HTTPS bridge/API on `gizmo-server`; the bridge reads Minecraft files on `gizmo-server` and talks to Piston MySQL over Tailscale. Do **not** expose raw MySQL publicly.
 
 ## Required workflow
 
