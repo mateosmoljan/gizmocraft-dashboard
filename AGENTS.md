@@ -11,7 +11,7 @@
 - UI deployment target: Vercel public dashboard.
 - Database target: MySQL on business server **Piston** (`piston` / `100.120.246.18`), database `gizmocraft_dashboard`.
 - Transfer note: active GizmoCraft dashboard MySQL was moved off the Cisco server laptop to Piston. Agents updating/importing/exporting/querying dashboard DB data must use Piston, not Cisco-local MySQL.
-- Public connectivity pattern: Vercel UI calls an authenticated HTTPS bridge/API on `gizmo-server`; the bridge reads Minecraft files on `gizmo-server` and talks to Piston MySQL over Tailscale. Do **not** expose raw MySQL publicly.
+- Public connectivity pattern: Vercel UI calls an authenticated HTTPS bridge/API on **Piston** (`https://piston.tailfca8d2.ts.net/gizmocraft`); the Piston bridge talks to local/private Piston MySQL. `gizmo-server` remains the active Minecraft host/data source, but raw MySQL must not be exposed publicly.
 
 ## Required workflow
 
