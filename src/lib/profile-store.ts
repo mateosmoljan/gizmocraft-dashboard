@@ -5,6 +5,7 @@ import { normalizeEmail, normalizeMinecraftUsername, usernameFromEmail } from "@
 import { notifyNewUserSignup } from "@/lib/signup-notifications";
 
 const PROFILE_DB_TIMEOUT_MS = 900;
+const PROFILE_BRIDGE_TIMEOUT_MS = 8_000;
 type ProfileUpdate = { username?: string; name?: string; image?: string | null; minecraftUsername?: string; minecraftUuid?: string; minecraftStatus?: string; preferences?: string; recordSignIn?: boolean };
 export type AppUserStats = { online: number; totalSignedIn: number; live: boolean };
 const APP_ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -54,7 +55,7 @@ async function bridgeJson<T>(path: string, init?: RequestInit): Promise<T> {
       ...(requestInit.headers as Record<string, string> | undefined),
       ...(init?.headers as Record<string, string> | undefined),
     },
-    signal: AbortSignal.timeout(2500),
+    signal: AbortSignal.timeout(PROFILE_BRIDGE_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`bridge ${res.status}`);
   return res.json() as Promise<T>;
