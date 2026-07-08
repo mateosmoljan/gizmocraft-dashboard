@@ -101,6 +101,19 @@ async function runCommand(command, args = [], timeout = 1500) {
     return "";
   }
 }
+async function readRemoteMinecraftHostUsage() {
+  const host = process.env.MINECRAFT_USAGE_SSH_HOST ?? "gizmo-server";
+  const command = process.env.MINECRAFT_USAGE_COMMAND ?? "/usr/local/sbin/gizmocraft-usage-json.py";
+  if (!host) return null;
+  try {
+    const { stdout } = await execFileAsync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, command], { timeout: 8000, maxBuffer: 1024 * 256 });
+    const payload = JSON.parse(String(stdout ?? "{}"));
+    return { ...payload, source: "minecraft-host", telemetryHost: host };
+  } catch (error) {
+    console.warn("Remote Minecraft host usage probe failed", error);
+    return null;
+  }
+}
 async function readServerProperties() {
   try {
     const text = await readFile(`${serverRoot}/server.properties`, "utf8");
@@ -641,11 +654,19 @@ async function minecraftUsage() {
 }
 async function handleUsage(_req, res) {
   try {
+    const remoteUsage = await readRemoteMinecraftHostUsage();
+    if (remoteUsage) {
+      res.json(remoteUsage);
+      return;
+    }
+
     const cpuPercent = await cpuUsagePercent();
     const memoryUsed = os.totalmem() - os.freemem();
     const [disk, network, minecraft] = await Promise.all([diskUsage(), networkUsage(), minecraftUsage()]);
     res.json({
       checkedAt: new Date().toISOString(),
+      source: "bridge-host-fallback",
+      note: "Minecraft host telemetry was unavailable; showing bridge host fallback.",
       system: {
         host: os.hostname(),
         cpu: { usagePercent: cpuPercent, detail: `${os.cpus().length} cores · load ${os.loadavg().map((value) => value.toFixed(2)).join(" / ")}` },

@@ -78,7 +78,7 @@ export async function getServerUsage(): Promise<ServerUsageData> {
         metric("RAM", memory.used ?? memory.usedHuman, memory.total ? `${memory.total} total` : memory.detail, memory.usedPercent ?? memory.percent),
         metric("Minecraft RAM", minecraft.memory?.used ?? minecraft.memoryUsed, minecraft.memory?.limit ? `${minecraft.memory.limit} limit` : minecraft.memoryDetail, minecraft.memory?.percent ?? minecraft.memoryPercent),
         metric("Disk", disk.used ?? disk.usedHuman, disk.total ? `${disk.total} total` : disk.detail, disk.usedPercent ?? disk.percent),
-        metric("Wi‑Fi", network.wifi?.ssid ?? network.ssid ?? (network.wifi?.connected === false ? "Not connected" : network.summary), network.detail ?? network.interface),
+        metric("Server network", network.wifi?.ssid ?? network.ssid ?? network.summary ?? (network.wifi?.connected === false ? "No Wi‑Fi SSID" : "Unavailable"), network.detail ?? network.interface),
         metric("Network", network.summary ?? network.latency ?? "Unavailable", network.detail),
         metric("Active Minecraft players", activePlayerValue, activePlayerDetail),
       ],

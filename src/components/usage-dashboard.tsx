@@ -11,7 +11,7 @@ const USAGE_PLACEHOLDERS: ServerUsageMetric[] = [
   { label: "RAM", value: "" },
   { label: "Minecraft RAM", value: "" },
   { label: "Disk", value: "" },
-  { label: "Wi‑Fi", value: "" },
+  { label: "Server network", value: "" },
   { label: "Network", value: "" },
   { label: "Active Minecraft players", value: "" },
 ];
